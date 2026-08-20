@@ -3,12 +3,12 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Instalar pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Instalar pnpm (versão compatível com Node 20)
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Copiar dependências
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copiar código
 COPY . .

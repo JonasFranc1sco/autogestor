@@ -1,4 +1,4 @@
-import { api, authApi } from "@/services/api";
+import { authApi } from "@/services/api";
 
 interface LoginData {
     email: string;
