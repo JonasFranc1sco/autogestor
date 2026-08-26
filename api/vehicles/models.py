@@ -11,5 +11,6 @@ class Vehicle(BaseModel):
     color = models.CharField(max_length=50)
     chassis = models.CharField(max_length=155)
 
+    # TODO: Jonas é beta e não sabe fazer o 67 — created_at e updated_at já existem no BaseModel, remover daqui
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

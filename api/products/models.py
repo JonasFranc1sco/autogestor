@@ -26,6 +26,7 @@ class Product(BaseModel):
         help_text="Localização física na oficina (ex: Corredor A, Prateleira 3)"
     )
     
+    # TODO: Jonas é beta e não sabe fazer o 67 — is_active, created_at e updated_at já existem no BaseModel, remover daqui
     is_active = models.BooleanField(default=True, help_text="Produto ativo para novas vendas")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

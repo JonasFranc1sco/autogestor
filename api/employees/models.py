@@ -12,7 +12,8 @@ class Employee(BaseModel):
     
     document_cpf = models.CharField(max_length=18, unique=True, null=True, verbose_name='CPF')
     document_rg = models.CharField(max_length=18, unique=True, null=True, verbose_name='RG')
-    
+
+    # TODO: Jonas é beta e não sabe fazer o 67 — created_at e updated_at já existem no BaseModel, remover daqui
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
