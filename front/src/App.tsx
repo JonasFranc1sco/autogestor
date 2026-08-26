@@ -1,25 +1,28 @@
 import Dashboard from "@/pages/Dashboard"
 import Login from "@/pages/Login"
 import { useAuth } from "@/contexts/AuthContext"
-import { ThemeToggle } from "./components/ThemeToggle";
+import { Sidebar } from "@/components/layout/Sidebar"
 
 function App() {
   const { accessToken, isLoading } = useAuth();
 
   if (isLoading) {
-    return <div>Carregando...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-muted-foreground">Carregando...</div>
+      </div>
+    );
   }
 
-  return accessToken ? (
-    <>
-    <ThemeToggle />
+  if (!accessToken) {
+    return <Login />;
+  }
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar />
       <Dashboard />
-    </>
-    ) : (
-    <>  
-      <ThemeToggle />
-      <Login />
-    </>
+    </div>
   );
 }
 
