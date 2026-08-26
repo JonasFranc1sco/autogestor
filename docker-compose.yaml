@@ -18,6 +18,13 @@ services:
 
   api:
     build: ./api
+    develop:
+      watch:
+        - action: sync
+          path: ./api
+          target: /app
+        - action: rebuild
+          path: ./api/requirements.txt
     restart: unless-stopped
     ports:
       - "8000:8000"
