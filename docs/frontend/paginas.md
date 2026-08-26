@@ -6,7 +6,14 @@
 
 **Arquivo:** `src/pages/Login.tsx`
 
-Formulário de autenticação com email e senha. Centralizado na tela.
+Página de autenticação com identidade visual do sistema.
+
+**Layout:**
+- Logo com ícone de carro e animação sutil (`animate-logo-pulse`)
+- Texto "AUTO**GESTOR**" com destaque laranja
+- Card com inputs (email + senha) e ícones
+- Botão "Entrar" com loading spinner
+- Mensagem de erro com fundo destructive
 
 **Estado:** email, password, isLoading, error
 
@@ -22,17 +29,25 @@ Formulário de autenticação com email e senha. Centralizado na tela.
 
 **Arquivo:** `src/pages/Dashboard.tsx`
 
-Página principal com resumo da oficina.
+Página principal com layout completo.
 
-**Componentes:**
-- `QuickActions` — 4 botões de ação (sem handlers)
-- `SummaryCards` — 4 cards com estatísticas (dados hardcoded)
+**Layout:**
+- **Header** — título "Dashboard" + ícones de notificação e perfil
+- **Boas-vindas** — "Olá, Vitor!" + widget com data atual
+- **Ações rápidas** — grid de 4 cards (Novo Cliente, Nova OS, Novo Veículo, Novo Produto)
+- **Resumo** — grid de 4 cards com estatísticas (OS, Veículos, Clientes, Produtos)
+- **OS recentes** — tabela com últimas 4 ordens de serviço e badges de status
+- **Atividade recente** — timeline com eventos do sistema
 
-**Dados estáticos:**
-- OS: 12 (Em aberto)
-- Veículos: 12 (Em atendimento)
-- Clientes: 12 (Cadastrados)
-- Produtos: 128 (Em estoque)
+**Dados:** Todos fictícios (hardcoded)
+
+**Status das OS:**
+| Status | Cor | Label |
+|--------|-----|-------|
+| `progress` | Laranja | Em andamento |
+| `waiting` | Amarelo | Aguardando peças |
+| `client` | Azul | Aguardando cliente |
+| `done` | Verde | Concluída |
 
 ---
 
@@ -41,8 +56,8 @@ Página principal com resumo da oficina.
 ```
 App.tsx
 ├── Se isLoading → "Carregando..."
-├── Se accessToken → Dashboard
-└── Se !accessToken → Login
+├── Se !accessToken → Login
+└── Se accessToken → Sidebar + Dashboard
 ```
 
 **Não há react-router.** Navegação por condicional no App.tsx.

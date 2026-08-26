@@ -22,11 +22,14 @@ SPA construída com React 19, TypeScript, Vite 8, Tailwind CSS v4 e shadcn/ui.
 ```
 src/
 ├── main.tsx              # Entry point
-├── App.tsx               # Roteamento por auth
+├── App.tsx               # Layout com Sidebar + roteamento por auth
 ├── contexts/             # AuthContext, ThemeContext
 ├── services/             # api.ts, auth, token, dashboard
 ├── pages/                # Login, Dashboard
-├── components/           # ThemeToggle, dashboard/, ui/
+├── components/
+│   ├── layout/
+│   │   └── Sidebar.tsx   # Sidebar com navegação e perfil
+│   └── ui/               # Componentes shadcn
 └── lib/                  # utils.ts (cn helper)
 ```
 

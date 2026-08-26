@@ -2,6 +2,25 @@
 
 ---
 
+## Layout
+
+### Sidebar
+
+**Arquivo:** `src/components/layout/Sidebar.tsx`
+
+Sidebar fixa com 260px de largura.
+
+**Elementos:**
+- Logo com ícone de carro (`IconCar`) e animação `logo-pulse`
+- Texto "AUTO**GESTOR**" com destaque primary
+- Menu de navegação com 9 itens (Dashboard, Clientes, OS, Veículos, Produtos, Financeiro, Relatórios, Agenda, Configurações)
+- Item ativo com fundo primary/10 e borda primary/20
+- Perfil do usuário no rodapé (avatar, nome, role, botão logout)
+
+**Ícones:** @tabler/icons-react
+
+---
+
 ## shadcn/ui (base-nova)
 
 ### Button
@@ -30,22 +49,6 @@ Variante: `variant="card"`
 
 ---
 
-## Componentes Customizados
-
-### ThemeToggle
-
-Botão alternar tema dark/light. Ícones `IconSun`/`IconMoon`.
-
-### SummaryCards
-
-Grid de 4 cards: OS, Veículos, Clientes, Produtos (dados hardcoded).
-
-### QuickActions
-
-Grid de 4 botões: Novo cliente, Nova OS, Novo veículo, Novo produto (sem handlers).
-
----
-
 ## Utilitários
 
 ### cn()
@@ -58,3 +61,20 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 ```
+
+---
+
+## Animações
+
+### logo-pulse
+
+Animação sutil de escala aplicada ao ícone da logo.
+
+```css
+@keyframes logo-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+```
+
+Classe: `animate-logo-pulse`
