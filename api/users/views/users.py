@@ -2,7 +2,7 @@ from django.shortcuts import render
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from users.models import User
-from users.permissions import IsAdmin, IsManager, IsOwnerOrAdmin
+from users.permissions import IsAdmin, IsManagerOrAdmin, IsOwnerOrAdmin
 from users.serializers.user import UserUpdateSerializer, UserCreateSerializer, UserListSerializer, UserDetailSerializer
 # Create your views here.
 
@@ -51,7 +51,7 @@ class UserViewSet(viewsets.ModelViewSet):
             permissions = [IsAdmin]
             
         elif self.action == "list":
-            permissions= [IsManager]
+            permissions= [IsManagerOrAdmin]
 
         elif self.action in (
             "retrieve",
