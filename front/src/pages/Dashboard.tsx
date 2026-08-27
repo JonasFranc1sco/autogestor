@@ -43,7 +43,6 @@ function formatDate() {
   const now = new Date();
   const day = now.getDate();
   const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-  const days = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
   return `${day} de ${months[now.getMonth()]}, ${now.getFullYear()}`;
 }
 
