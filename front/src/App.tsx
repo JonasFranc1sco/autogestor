@@ -1,10 +1,16 @@
-import Dashboard from "@/pages/Dashboard"
-import Login from "@/pages/Login"
-import { useAuth } from "@/contexts/AuthContext"
-import { Sidebar } from "@/components/layout/Sidebar"
+import { useState } from "react";
+import Dashboard from "@/pages/Dashboard";
+import Login from "@/pages/Login";
+import ClientsPage from "@/pages/Clients";
+import VehiclesPage from "@/pages/Vehicles";
+import ProductsPage from "@/pages/Products";
+import EmployeesPage from "@/pages/Employees";
+import { useAuth } from "@/contexts/AuthContext";
+import { Sidebar, type Page } from "@/components/layout/Sidebar";
 
 function App() {
   const { accessToken, isLoading } = useAuth();
+  const [currentPage, setCurrentPage] = useState<Page>("dashboard");
 
   if (isLoading) {
     return (
@@ -18,10 +24,25 @@ function App() {
     return <Login />;
   }
 
+  function renderPage() {
+    switch (currentPage) {
+      case "clientes":
+        return <ClientsPage />;
+      case "veiculos":
+        return <VehiclesPage />;
+      case "produtos":
+        return <ProductsPage />;
+      case "funcionarios":
+        return <EmployeesPage />;
+      default:
+        return <Dashboard />;
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <Dashboard />
+      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+      {renderPage()}
     </div>
   );
 }
