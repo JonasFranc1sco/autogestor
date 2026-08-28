@@ -1,3 +1,8 @@
-from django.shortcuts import render
+from rest_framework import viewsets
+from .models import ServiceOrder
+from .serializers import ServiceOrderSerializer
 
-# Create your views here.
+
+class ServiceOrderViewSet(viewsets.ModelViewSet):
+    queryset = ServiceOrder.objects.select_related("client", "vehicle", "mechanic").all()
+    serializer_class = ServiceOrderSerializer
