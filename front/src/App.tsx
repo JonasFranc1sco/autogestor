@@ -5,6 +5,7 @@ import ClientsPage from "@/pages/Clients";
 import VehiclesPage from "@/pages/Vehicles";
 import ProductsPage from "@/pages/Products";
 import EmployeesPage from "@/pages/Employees";
+import ServiceOrdersPage from "@/pages/ServiceOrders";
 import { useAuth } from "@/contexts/AuthContext";
 import { Sidebar, type Page } from "@/components/layout/Sidebar";
 
@@ -28,6 +29,8 @@ function App() {
     switch (currentPage) {
       case "clientes":
         return <ClientsPage />;
+      case "os":
+        return <ServiceOrdersPage />;
       case "veiculos":
         return <VehiclesPage />;
       case "produtos":

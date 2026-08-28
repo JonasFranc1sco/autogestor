@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-export type Page = "dashboard" | "clientes" | "veiculos" | "produtos" | "funcionarios";
+export type Page = "dashboard" | "clientes" | "os" | "veiculos" | "produtos" | "funcionarios";
 
 interface SidebarProps {
   currentPage: Page;
@@ -27,7 +27,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const navItems: { icon: typeof IconHome; label: string; page: Page; adminOnly?: boolean }[] = [
     { icon: IconHome, label: "Dashboard", page: "dashboard" },
     { icon: IconUsers, label: "Clientes", page: "clientes" },
-    { icon: IconClipboardList, label: "Ordem de Serviço", page: "dashboard" },
+    { icon: IconClipboardList, label: "Ordem de Serviço", page: "os" },
     { icon: IconCar, label: "Veículos", page: "veiculos" },
     { icon: IconBox, label: "Produtos", page: "produtos" },
     { icon: IconUsers, label: "Funcionários", page: "funcionarios", adminOnly: true },
