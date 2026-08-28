@@ -13,24 +13,31 @@ import {
 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-const navItems = [
-  { icon: IconHome, label: "Dashboard", active: true },
-  { icon: IconUsers, label: "Clientes" },
-  { icon: IconClipboardList, label: "Ordem de Serviço" },
-  { icon: IconCar, label: "Veículos" },
-  { icon: IconBox, label: "Produtos" },
-  { icon: IconCash, label: "Financeiro" },
-  { icon: IconChartBar, label: "Relatórios" },
-  { icon: IconCalendar, label: "Agenda" },
-  { icon: IconSettings, label: "Configurações" },
-];
+export type Page = "dashboard" | "clientes" | "veiculos" | "produtos" | "funcionarios";
 
-export function Sidebar() {
-  const { setAccessToken } = useAuth();
+interface SidebarProps {
+  currentPage: Page;
+  onNavigate: (page: Page) => void;
+}
 
-  function handleLogout() {
-    setAccessToken(null);
-  }
+export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
+  const { user, logout } = useAuth();
+  const isAdminOrManager = user?.role === "ADMIN" || user?.role === "MANAGER";
+
+  const navItems: { icon: typeof IconHome; label: string; page: Page; adminOnly?: boolean }[] = [
+    { icon: IconHome, label: "Dashboard", page: "dashboard" },
+    { icon: IconUsers, label: "Clientes", page: "clientes" },
+    { icon: IconClipboardList, label: "Ordem de Serviço", page: "dashboard" },
+    { icon: IconCar, label: "Veículos", page: "veiculos" },
+    { icon: IconBox, label: "Produtos", page: "produtos" },
+    { icon: IconUsers, label: "Funcionários", page: "funcionarios", adminOnly: true },
+    { icon: IconCash, label: "Financeiro", page: "dashboard" },
+    { icon: IconChartBar, label: "Relatórios", page: "dashboard" },
+    { icon: IconCalendar, label: "Agenda", page: "dashboard" },
+    { icon: IconSettings, label: "Configurações", page: "dashboard" },
+  ];
+
+  const visibleItems = navItems.filter((item) => !item.adminOnly || isAdminOrManager);
 
   return (
     <aside className="flex w-[260px] flex-col border-r border-border bg-surface p-4">
@@ -48,14 +55,16 @@ export function Sidebar() {
 
       <nav className="flex-1">
         <ul className="space-y-1">
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
+            const isActive = currentPage === item.page && item.page !== "dashboard";
 
             return (
               <li key={item.label}>
                 <button
+                  onClick={() => onNavigate(item.page)}
                   className={`flex w-full items-center gap-4 rounded-lg px-4 py-3 text-sm font-medium transition-all ${
-                    item.active
+                    isActive
                       ? "border border-primary/20 bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
                   }`}
@@ -76,12 +85,20 @@ export function Sidebar() {
           </div>
 
           <div className="flex-1">
-            <p className="text-sm font-semibold">Vitor Gabriel</p>
-            <p className="text-xs text-primary">Administrador</p>
+            <p className="text-sm font-semibold">{user?.full_name || "Usuário"}</p>
+            <p className="text-xs text-primary">
+              {user?.role === "ADMIN"
+                ? "Administrador"
+                : user?.role === "MANAGER"
+                  ? "Gerente"
+                  : user?.role === "MECHANIC"
+                    ? "Mecânico"
+                    : "Atendente"}
+            </p>
           </div>
 
           <button
-            onClick={handleLogout}
+            onClick={logout}
             className="text-muted-foreground transition-colors hover:text-destructive"
             title="Sair"
           >
