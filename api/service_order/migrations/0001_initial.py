@@ -10,8 +10,8 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('clients', '0002_alter_client_address_alter_client_name_and_more'),
-        ('employees', '0002_alter_employee_address_delete_address'),
+        ('clients', '0001_initial'),
+        ('employees', '0001_initial'),
         ('vehicles', '0001_initial'),
     ]
 
@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
                 ('status', models.CharField(choices=[('OPEN', 'Aberta'), ('IN_PROGRESS', 'Em andamento'), ('WAITING_PARTS', 'Aguardando peças'), ('WAITING_CLIENT', 'Aguardando cliente'), ('DONE', 'Concluída'), ('CANCELLED', 'Cancelada')], default='OPEN', max_length=20)),
                 ('description', models.TextField(blank=True, help_text='Descrição do serviço solicitado', null=True)),
                 ('observations', models.TextField(blank=True, help_text='Observações internas', null=True)),
-                ('total_price', models.DecimalField(decimal_places=2, default=0, help_text='Valor total do serviço', max_digits=10)),
+                ('total_price', models.DecimalField(decimal_places=2, help_text='Valor total do serviço', max_digits=10)),
                 ('client', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='service_orders', to='clients.client')),
                 ('mechanic', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='service_orders', to='employees.employee')),
                 ('vehicle', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='service_orders', to='vehicles.vehicle')),
