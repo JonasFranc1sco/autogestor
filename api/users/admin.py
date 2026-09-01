@@ -1,5 +1,4 @@
 from django.contrib import admin
-<<<<<<< HEAD
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.utils.translation import gettext_lazy as _
@@ -57,7 +56,3 @@ class CustomUserAdmin(UserAdmin):
     )
 
     search_fields = ("email", "full_name")
-=======
-from users.models import User
-# Register your models here.
->>>>>>> 5eacf8a (fix(serializers): implement create and update methods for Client and Employee serializers)
