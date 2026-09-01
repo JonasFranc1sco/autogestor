@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Employee
 from core.serializers import AddressSerializer
+from core.models import Address
 
 class EmployeeSerializer(serializers.ModelSerializer):
     address = AddressSerializer()
