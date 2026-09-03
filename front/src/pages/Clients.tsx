@@ -20,6 +20,15 @@ export default function ClientsPage() {
     phone: "",
     document: "",
     responsible: "",
+    address: {
+      cep: "",
+      street: "",
+      number: "",
+      neighborhood: "",
+      city: "",
+      state: "",
+      complement: "",
+    },
   });
 
   useEffect(() => {
@@ -54,11 +63,24 @@ export default function ClientsPage() {
     try {
       setCreating(true);
       await createClient({
-        ...form,
-        address: 1,
+        person_type: form.person_type,
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        document: form.document,
+        responsible: form.responsible || undefined,
+        address: form.address,
       });
       setDialogOpen(false);
-      setForm({ person_type: "PF", name: "", email: "", phone: "", document: "", responsible: "" });
+      setForm({
+        person_type: "PF",
+        name: "",
+        email: "",
+        phone: "",
+        document: "",
+        responsible: "",
+        address: { cep: "", street: "", number: "", neighborhood: "", city: "", state: "", complement: "" },
+      });
       await loadClients();
     } catch (error) {
       console.error("Erro ao criar cliente:", error);
@@ -186,6 +208,76 @@ export default function ClientsPage() {
                 onChange={(e) => setForm({ ...form, responsible: e.target.value })}
                 placeholder="Responsável / Frotista"
               />
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <p className="mb-3 text-sm font-semibold text-muted-foreground">Endereço</p>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">CEP *</label>
+                <Input
+                  value={form.address.cep}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, cep: e.target.value } })}
+                  placeholder="00000000"
+                  maxLength={8}
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="mb-1 block text-sm font-medium">Rua *</label>
+                <Input
+                  value={form.address.street}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, street: e.target.value } })}
+                  placeholder="Nome da rua"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-3 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Número *</label>
+                <Input
+                  value={form.address.number}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, number: e.target.value } })}
+                  placeholder="123"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Bairro *</label>
+                <Input
+                  value={form.address.neighborhood}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, neighborhood: e.target.value } })}
+                  placeholder="Bairro"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Cidade *</label>
+                <Input
+                  value={form.address.city}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, city: e.target.value } })}
+                  placeholder="Cidade"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">Estado *</label>
+                <Input
+                  value={form.address.state}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, state: e.target.value.toUpperCase() } })}
+                  placeholder="UF"
+                  maxLength={2}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Complemento</label>
+                <Input
+                  value={form.address.complement}
+                  onChange={(e) => setForm({ ...form, address: { ...form.address, complement: e.target.value } })}
+                  placeholder="Apto, Bloco, etc."
+                />
+              </div>
             </div>
           </div>
         </div>

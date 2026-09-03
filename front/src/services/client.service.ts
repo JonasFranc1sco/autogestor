@@ -22,6 +22,16 @@ export interface Client {
   updated_at: string;
 }
 
+export interface AddressCreateData {
+  cep: string;
+  street: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  complement: string;
+}
+
 export interface ClientCreateData {
   person_type: "PF" | "PJ";
   name: string;
@@ -29,7 +39,7 @@ export interface ClientCreateData {
   email: string;
   document: string;
   responsible?: string;
-  address: number;
+  address: AddressCreateData;
 }
 
 export async function getClients(): Promise<Client[]> {

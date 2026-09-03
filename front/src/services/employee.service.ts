@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { type AddressCreateData } from "./client.service";
 
 export interface Employee {
   id: string;
@@ -27,7 +28,7 @@ export interface EmployeeCreateData {
   email: string;
   document_cpf: string;
   document_rg: string;
-  address: number;
+  address: AddressCreateData;
 }
 
 export async function getEmployees(): Promise<Employee[]> {
