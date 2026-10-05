@@ -26,7 +26,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if address_data:
             address = instance.address
             for attr, value in address_data.items():
-                setattrs(address, attr, value)
+                setattr(address, attr, value)
             address.save()
             
         for attr, value in validated_data.items():

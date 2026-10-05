@@ -1,9 +1,10 @@
 from rest_framework import serializers
 from .models import Client
+from core.models import Address
 from core.serializers import AddressSerializer
 
 class ClientSerializer(serializers.ModelSerializer):
-    address = AddressSerializer(read_only=True)
+    address = AddressSerializer()
     class Meta:
         model = Client
         fields = ['id', 'person_type','name', 'phone','email','address','document', 'responsible', 'created_at', 'updated_at']
@@ -25,7 +26,7 @@ class ClientSerializer(serializers.ModelSerializer):
         if address_data:
             address = instance.address
             for attr, value in address_data.items():
-                setattrs(address, attr, value)
+                setattr(address, attr, value)
             address.save()
             
         for attr, value in validated_data.items():

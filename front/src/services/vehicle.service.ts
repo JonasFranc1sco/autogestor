@@ -17,7 +17,7 @@ export interface Vehicle {
 }
 
 export interface VehicleCreateData {
-  owner: string;
+  owner_id: string;
   license_plate: string;
   brand: string;
   model: string;

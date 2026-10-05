@@ -57,7 +57,7 @@ export default function VehiclesPage() {
 
     try {
       setCreating(true);
-      await createVehicle(form);
+      await createVehicle({...form, owner_id: form.owner});
       setDialogOpen(false);
       setForm({ owner: "", license_plate: "", brand: "", model: "", color: "", chassis: "" });
       await loadData();
