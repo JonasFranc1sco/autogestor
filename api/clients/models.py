@@ -10,11 +10,11 @@ class Client(BaseModel):
     
     person_type = models.CharField(choices=PersonType, max_length=2, default=PersonType.FISICA, verbose_name='Tipo de Cliente')
     name = models.CharField(max_length=155)
-    phone = PhoneNumberField(blank=True)
-    email = models.EmailField(max_length=254)
-    address = models.ForeignKey(Address, on_delete=models.CASCADE)
+    phone = PhoneNumberField(blank=True, null=True)
+    email = models.EmailField(max_length=254, blank=True, null=True)
+    address = models.ForeignKey(Address, on_delete=models.CASCADE, blank=True, null=True)
     
-    document = models.CharField(max_length=18, unique=True, null=True, verbose_name='CPF / CNPJ')
+    document = models.CharField(max_length=18, unique=True, blank=True, null=True, verbose_name='CPF / CNPJ')
     responsible = models.CharField(max_length=155, blank=True, null=True, verbose_name='Responsável / Frotista')
 
     def __str__(self):
