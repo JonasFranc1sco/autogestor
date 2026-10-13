@@ -7,12 +7,26 @@ interface DialogProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
-  onSubmit: () => void;
-  submitLabel: string;
+  onSubmit?: () => void;
+  submitLabel?: string;
   loading?: boolean;
+  maxWidth?: string;
+  zIndex?: string;
+  hideSubmit?: boolean;
 }
 
-export function Dialog({ open, onClose, title, children, onSubmit, submitLabel, loading = false }: DialogProps) {
+export function Dialog({
+  open,
+  onClose,
+  title,
+  children,
+  onSubmit,
+  submitLabel = "Salvar",
+  loading = false,
+  maxWidth = "max-w-lg",
+  zIndex = "z-50",
+  hideSubmit = false,
+}: DialogProps) {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
@@ -27,29 +41,34 @@ export function Dialog({ open, onClose, title, children, onSubmit, submitLabel, 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+    <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4`}>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={onClose} />
 
-      <div className="relative z-50 w-full max-w-lg rounded-2xl border border-border bg-background p-6 shadow-lg">
-        <div className="mb-6 flex items-center justify-between">
+      <div
+        className={`relative ${zIndex} w-full ${maxWidth} max-h-[90vh] flex flex-col rounded-2xl border border-border bg-background p-6 shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150`}
+      >
+        <div className="mb-4 flex items-center justify-between border-b border-border/40 pb-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="text-muted-foreground transition-colors hover:text-foreground"
+            className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <IconX size={20} />
           </button>
         </div>
 
-        <div className="mb-6">{children}</div>
+        <div className="flex-1 overflow-y-auto pr-1 py-1">{children}</div>
 
-        <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
+        <div className="mt-4 flex justify-end gap-3 border-t border-border/40 pt-4">
+          <Button type="button" variant="outline" onClick={onClose}>
+            {hideSubmit ? "Fechar" : "Cancelar"}
           </Button>
-          <Button onClick={onSubmit} loading={loading}>
-            {submitLabel}
-          </Button>
+          {!hideSubmit && onSubmit && (
+            <Button type="button" onClick={onSubmit} loading={loading}>
+              {submitLabel}
+            </Button>
+          )}
         </div>
       </div>
     </div>

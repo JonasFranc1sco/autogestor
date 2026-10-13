@@ -47,7 +47,6 @@ make createsuperuser  # Criar admin
 
 - `clients.Address` e `employees.Address` são duplicados
 - `Client.name` declarado duas vezes no código
-- `service_order` app vazia
 - Rotas de clients, vehicles, employees, products não registradas
 - Dashboard com dados hardcoded
 

@@ -122,7 +122,7 @@ autogestor/
 | Veículos | ⚠️ Parcial | Modelos e serializers prontos, rotas não registradas |
 | Funcionários | ⚠️ Parcial | Modelos e serializers prontos, rotas não registradas |
 | Produtos | ⚠️ Parcial | Modelos e serializers prontos, rotas não registradas |
-| Ordens de Serviço | ❌ Vazio | App criada sem implementação |
+| Ordens de Serviço | ✅ Completo | Gestão de OS com serviços, produtos, mecânico e cálculo de totais |
 
 ---
 

@@ -1,5 +1,35 @@
 import { api } from "./api";
 
+export interface ServiceOrderItemService {
+  id?: string;
+  service?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+  service_id?: string | null;
+  service_name?: string;
+  price: string | number;
+  discount?: string | number;
+  total_price?: string | number;
+}
+
+export interface ServiceOrderItemProduct {
+  id?: string;
+  product?: {
+    id: string;
+    name: string;
+    reference_code?: string;
+    brand?: string;
+    sale_price?: string;
+  };
+  product_id?: string;
+  quantity: number;
+  price: string | number;
+  discount?: string | number;
+  total_price?: string | number;
+}
+
 export interface ServiceOrder {
   id: string;
   client: {
@@ -21,6 +51,8 @@ export interface ServiceOrder {
   description: string | null;
   observations: string | null;
   total_price: string;
+  services?: ServiceOrderItemService[];
+  products?: ServiceOrderItemProduct[];
   created_at: string;
   updated_at: string;
 }
@@ -32,7 +64,19 @@ export interface ServiceOrderCreateData {
   status?: string;
   description?: string;
   observations?: string;
-  total_price?: string;
+  total_price?: string | number;
+  services?: {
+    service_id?: string | null;
+    service_name: string;
+    price: number | string;
+    discount?: number | string;
+  }[];
+  products?: {
+    product_id: string;
+    quantity: number;
+    price: number | string;
+    discount?: number | string;
+  }[];
 }
 
 export async function getServiceOrders(): Promise<ServiceOrder[]> {

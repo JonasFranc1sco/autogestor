@@ -40,7 +40,7 @@ class ServiceOrderService(BaseModel):
 
     @property
     def total_price(self):
-        return (self.unit_price * self.quantity) - self.discount
+        return self.price - self.discount
     
 class ServiceOrderProduct(BaseModel):
     service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="products")
@@ -51,4 +51,4 @@ class ServiceOrderProduct(BaseModel):
 
     @property
     def total_price(self):
-        return (self.unit_price * self.quantity) - self.discount
+        return (self.price * self.quantity) - self.discount
