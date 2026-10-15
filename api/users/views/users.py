@@ -38,10 +38,21 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer.save()
         
     def perform_destroy(self, instance):
-        
+        from rest_framework.exceptions import ValidationError
+
+        if instance == self.request.user:
+            raise ValidationError("Você não pode desativar a própria conta.")
+
+        if instance.role == Role.ADMIN:
+            other_admins = User.objects.filter(
+                workshop=instance.workshop, role=Role.ADMIN, is_active=True
+            ).exclude(pk=instance.pk)
+            if not other_admins.exists():
+                raise ValidationError("Não é possível desativar o último administrador da oficina.")
+
         instance.is_active = False
-        
-        instance.save()
+
+        instance.save(update_fields=["is_active", "updated_at"])
         
     def get_permissions(self):
         

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from users.views.auth import LoginView, LogoutView, RegisterView
 from users.views.users import UserViewSet
 from users.views.profile import ProfileView
-from users.views.password import ChangePasswordView
+from users.views.password import ChangePasswordView, PasswordResetView, PasswordResetConfirmView
 from users.views.refresh import RefreshView
 
 router = DefaultRouter()
@@ -20,7 +20,11 @@ urlpatterns = [
 
     path("profile/", ProfileView.as_view(), name="profile"),
     
-    path("profile/change-password/", ChangePasswordView.as_view())
+    path("profile/change-password/", ChangePasswordView.as_view()),
+
+    path("auth/password-reset/", PasswordResetView.as_view(), name="password-reset"),
+
+    path("auth/password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
 ]
 
 urlpatterns += router.urls

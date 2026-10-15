@@ -286,3 +286,68 @@ class UserManagementTests(BaseAuthTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["workshop"]["name"], "Oficina do Zé")
+
+
+@override_settings(REST_FRAMEWORK=REST_FRAMEWORK_NO_THROTTLE)
+class PasswordResetTests(APITestCase):
+    def setUp(self):
+        self.workshop = Workshop.objects.create(name="Oficina A")
+        self.user = User.objects.create_user(
+            email="reset@teste.com",
+            password="senhaForte123",
+            full_name="Reset",
+            role=Role.ATTENDANT,
+            workshop=self.workshop,
+        )
+
+    def test_request_reset_returns_200_even_for_unknown_email(self):
+        response = self.client.post(
+            "/api/auth/password-reset/", {"email": "naoexiste@teste.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.post(
+            "/api/auth/password-reset/", {"email": "reset@teste.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_reset_confirm_with_valid_token(self):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+
+        response = self.client.post(
+            "/api/auth/password-reset/confirm/",
+            {"uid": uid, "token": token, "new_password": "novaSenhaForte123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("novaSenhaForte123"))
+
+    def test_reset_confirm_with_invalid_token(self):
+        response = self.client.post(
+            "/api/auth/password-reset/confirm/",
+            {"uid": "abc", "token": "errado", "new_password": "novaSenhaForte123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_confirm_rejects_weak_password(self):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+
+        response = self.client.post(
+            "/api/auth/password-reset/confirm/",
+            {"uid": uid, "token": token, "new_password": "123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
