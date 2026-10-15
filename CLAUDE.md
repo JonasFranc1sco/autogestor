@@ -57,7 +57,7 @@ ou `make down-clean && make run`).
 
 ## Bugs Conhecidos
 
-- Dashboard do frontend com dados hardcoded (fase 2 substitui por endpoint real)
+- Nenhum bug conhecido no momento
 
 ## Deploy
 

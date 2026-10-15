@@ -128,6 +128,30 @@ PATCH /api/workshop/ — Atualizar dados da oficina (IsManagerOrAdmin)
 
 ---
 
+### Dashboard
+
+```
+GET /api/dashboard/ — Indicadores da oficina
+```
+
+**Response (200):**
+```json
+{
+  "counts": {
+    "open_service_orders": 3,
+    "in_progress_service_orders": 2,
+    "done_this_month": 10,
+    "clients": 45,
+    "vehicles": 52
+  },
+  "revenue_this_month": "4500.00",
+  "recent_service_orders": [ ... ],
+  "low_stock_products": [ ... ]
+}
+```
+
+---
+
 ### Ordens de Serviço — transição de status
 
 ```
@@ -170,6 +194,7 @@ por campo (ex: `?status=OPEN`, `?client=<id>`).
 | PATCH | `/api/profile/` | JWT | Atualizar perfil |
 | POST | `/api/profile/change-password/` | JWT | Alterar senha |
 | GET | `/api/workshop/` | JWT | Dados da oficina |
+| GET | `/api/dashboard/` | JWT | Indicadores da oficina |
 | GET | `/api/users/` | IsManager | Listar |
 | POST | `/api/users/` | IsAdmin | Criar |
 | GET | `/api/users/{id}/` | IsOwnerOrAdmin | Detalhes |
