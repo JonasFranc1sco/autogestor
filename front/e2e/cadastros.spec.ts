@@ -60,7 +60,9 @@ test.describe("Cadastros", () => {
     await page.getByRole("button", { name: "Cadastrar" }).click();
     await expect(page.getByText("Produto cadastrado com sucesso")).toBeVisible();
 
-    await expect(page.getByRole("cell", { name: produto, exact: true })).toBeVisible();
-    await expect(page.getByText("R$ 60,00")).toBeVisible();
+    const row = page.getByRole("row").filter({ hasText: produto });
+    await expect(row.getByRole("cell", { name: produto, exact: true })).toBeVisible();
+    await expect(row.getByText("R$ 60,00")).toBeVisible();
+    await expect(row.getByText("8 un.")).toBeVisible();
   });
 });
