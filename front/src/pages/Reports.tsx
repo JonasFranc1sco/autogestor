@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { IconLoader2, IconChartBar, IconCash, IconClipboardList, IconTool, IconBox, IconUser } from "@tabler/icons-react";
+import { IconLoader2, IconChartBar, IconCash, IconClipboardList, IconTool, IconBox, IconUser, IconDownload } from "@tabler/icons-react";
 import { FormField } from "@/components/ui/form";
 import { getReports, type ReportsData } from "@/services/report.service";
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from "@/services/serviceOrder.service";
@@ -41,6 +41,33 @@ export default function ReportsPage() {
     };
   }, [dateFrom, dateTo]);
 
+  function exportCsv() {
+    if (!data) return;
+    const rows: string[] = ["Relatorio;Valor"];
+    rows.push(`Ordens criadas;${data.summary.orders}`);
+    rows.push(`Ordens concluidas;${data.summary.done_orders}`);
+    rows.push(`Ordens canceladas;${data.summary.cancelled_orders}`);
+    rows.push(`Faturamento (concluidas);${data.summary.revenue_done}`);
+    rows.push(`Recebido;${data.summary.received}`);
+    rows.push("");
+    rows.push("Servico;Quantidade;Total");
+    for (const item of data.top_services) rows.push(`${item.name};${item.quantity};${item.total}`);
+    rows.push("");
+    rows.push("Produto;Quantidade;Total");
+    for (const item of data.top_products) rows.push(`${item.name};${item.quantity};${item.total}`);
+    rows.push("");
+    rows.push("Mecanico;OS;Faturamento");
+    for (const item of data.mechanic_productivity) rows.push(`${item.mechanic};${item.orders};${item.revenue}`);
+
+    const blob = new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `relatorio-${data.period.date_from}-${data.period.date_to}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const summaryCards = [
     { icon: IconClipboardList, label: "Ordens criadas", value: data?.summary.orders ?? 0 },
     { icon: IconChartBar, label: "Concluídas", value: data?.summary.done_orders ?? 0 },
@@ -62,6 +89,14 @@ export default function ReportsPage() {
           <div className="w-40">
             <FormField label="Até" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
+          <button
+            type="button"
+            onClick={exportCsv}
+            disabled={!data}
+            className="flex h-10 items-center gap-2 self-end rounded-lg border border-border px-4 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
+          >
+            <IconDownload size={16} /> Exportar CSV
+          </button>
         </div>
       </header>
 
