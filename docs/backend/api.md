@@ -221,6 +221,47 @@ POST   /api/appointments/{id}/change-status/ — Realizado | Não compareceu | C
 
 ---
 
+### Relatórios
+
+```
+GET /api/reports/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+```
+
+Resumo do período (ordens, faturamento, recebido), top serviços/peças,
+produtividade por mecânico e recebimentos por forma de pagamento (Admin/Gerente).
+
+---
+
+### Anexos da OS
+
+```
+GET    /api/service-orders/{id}/attachments/        — Listar anexos
+POST   /api/service-orders/{id}/attachments/        — Enviar arquivo (multipart, máx. 10 MB)
+DELETE /api/service-orders/{id}/attachments/{aid}/   — Remover anexo
+```
+
+Formatos aceitos: JPG, PNG, WEBP e PDF.
+
+---
+
+### Recuperação de senha
+
+```
+POST /api/auth/password-reset/          — Solicita link por e-mail (sempre 200)
+POST /api/auth/password-reset/confirm/  — Redefine com uid + token (válido por 24h)
+```
+
+---
+
+### OpenAPI
+
+```
+GET /api/schema/ — Esquema OpenAPI
+GET /api/docs/   — Interface Swagger
+```
+
+---
+
 ## Paginação e Busca
 
 Todas as listas usam paginação por página:
@@ -253,6 +294,10 @@ por campo (ex: `?status=OPEN`, `?client=<id>`).
 | GET | `/api/vehicles/{id}/service-orders/` | JWT | Histórico do veículo |
 | GET | `/api/appointments/` | JWT | Listar agendamentos |
 | POST | `/api/appointments/` | JWT | Criar agendamento |
+| GET | `/api/reports/` | Admin/Gerente | Relatórios gerenciais |
+| GET | `/api/schema/` | JWT | Esquema OpenAPI |
+| GET | `/api/docs/` | JWT | Swagger UI |
+| POST | `/api/auth/password-reset/` | Não | Recuperação de senha |
 | GET | `/api/users/` | IsManager | Listar |
 | POST | `/api/users/` | IsAdmin | Criar |
 | GET | `/api/users/{id}/` | IsOwnerOrAdmin | Detalhes |
