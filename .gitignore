@@ -50,3 +50,7 @@ coverage.xml
 site/
 .ruff_cache/
 .mypy_cache/
+
+# Artefatos de teste/revisão
+front/e2e/results/
+CODE_REVIEW.md
