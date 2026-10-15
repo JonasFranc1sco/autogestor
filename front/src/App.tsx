@@ -12,6 +12,10 @@ import EmployeesPage from "@/pages/Employees";
 import ServicesPage from "@/pages/Services";
 import ServiceOrdersPage from "@/pages/ServiceOrders";
 import ServiceOrderDetailPage from "@/pages/ServiceOrderDetail";
+import ServiceOrderPrintPage from "@/pages/ServiceOrderPrint";
+import StockPage from "@/pages/Stock";
+import AgendaPage from "@/pages/Agenda";
+import CashRegisterPage from "@/pages/CashRegister";
 
 function App() {
   return (
@@ -42,7 +46,18 @@ function App() {
             />
             <Route path="/os" element={<ServiceOrdersPage />} />
             <Route path="/os/:id" element={<ServiceOrderDetailPage />} />
+            <Route path="/estoque" element={<StockPage />} />
+            <Route path="/agenda" element={<AgendaPage />} />
+            <Route path="/caixa" element={<CashRegisterPage />} />
           </Route>
+          <Route
+            path="/os/:id/imprimir"
+            element={
+              <ProtectedRoute>
+                <ServiceOrderPrintPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>

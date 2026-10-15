@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
@@ -9,6 +9,8 @@ import {
   IconTrash,
   IconPencil,
   IconDeviceFloppy,
+  IconPrinter,
+  IconCash,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/layout/Dialog";
@@ -17,15 +19,19 @@ import {
   getServiceOrder,
   updateServiceOrder,
   changeServiceOrderStatus,
+  registerServiceOrderPayment,
+  refundServiceOrderPayment,
   STATUS_LABELS,
   STATUS_TRANSITIONS,
+  PAYMENT_METHOD_LABELS,
   type ServiceOrder,
   type ServiceOrderStatus,
+  type PaymentMethod,
 } from "@/services/serviceOrder.service";
 import { getEmployees, type Employee } from "@/services/employee.service";
 import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
-import { formatCurrency, formatDateTime, parseDecimalValue } from "@/lib/format";
+import { formatCurrency, formatDateTime, parseDecimalValue, tryParseDecimal } from "@/lib/format";
 import { extractApiErrorMessage } from "@/lib/errors";
 import { statusClasses } from "@/pages/ServiceOrders";
 
@@ -77,6 +83,11 @@ export default function ServiceOrderDetailPage() {
   const [observations, setObservations] = useState("");
   const [serviceRows, setServiceRows] = useState<ServiceItemRow[]>([]);
   const [productRows, setProductRows] = useState<ProductItemRow[]>([]);
+  const [odometer, setOdometer] = useState("");
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [savingPayment, setSavingPayment] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -86,6 +97,7 @@ export default function ServiceOrderDetailPage() {
       setOrder(data);
       setMechanicId(data.mechanic?.id ?? "");
       setObservations(data.observations ?? "");
+      setOdometer(data.odometer != null ? String(data.odometer) : "");
       setServiceRows(
         (data.services ?? []).map((item) => ({
           key: ++rowKey,
@@ -169,6 +181,7 @@ export default function ServiceOrderDetailPage() {
         ? {
             mechanic_id: mechanicId || null,
             observations,
+            odometer: odometer.trim() ? Number(odometer) : null,
             services: serviceRows.map((row) => ({
               service_id: row.service_id || null,
               service_name: row.service_id ? undefined : row.service_name.trim() || undefined,
@@ -192,6 +205,42 @@ export default function ServiceOrderDetailPage() {
       toast.error(extractApiErrorMessage(error, "Não foi possível salvar as alterações."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRegisterPayment() {
+    if (!order) return;
+    const amount = tryParseDecimal(paymentAmount);
+    if (amount === null || Number.parseFloat(amount) <= 0) {
+      toast.error("Informe um valor de pagamento válido.");
+      return;
+    }
+
+    setSavingPayment(true);
+    try {
+      await registerServiceOrderPayment(order.id, {
+        method: paymentMethod,
+        amount,
+      });
+      toast.success("Pagamento registrado com sucesso.");
+      setPaymentDialogOpen(false);
+      setPaymentAmount("");
+      await load();
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível registrar o pagamento."));
+    } finally {
+      setSavingPayment(false);
+    }
+  }
+
+  async function handleRefund(paymentId: string) {
+    if (!order) return;
+    try {
+      await refundServiceOrderPayment(order.id, paymentId);
+      toast.success("Pagamento estornado.");
+      await load();
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível estornar o pagamento."));
     }
   }
 
@@ -232,6 +281,13 @@ export default function ServiceOrderDetailPage() {
             {STATUS_LABELS[order.status]}
           </span>
 
+          <Link
+            to={`/os/${order.id}/imprimir`}
+            className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            <IconPrinter size={16} /> Imprimir
+          </Link>
+
           {!editing && canEdit && order.status !== "DONE" && order.status !== "CANCELLED" && (
             <Button variant="outline" onClick={() => setEditing(true)}>
               <IconPencil size={16} /> Editar
@@ -259,6 +315,21 @@ export default function ServiceOrderDetailPage() {
 
         <div className="rounded-2xl border border-border bg-surface p-5">
           <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Mecânico responsável</h2>
+          {editing && canEditItems && (
+            <div className="mb-2">
+              <FormField
+                label="Quilometragem (km)"
+                type="number"
+                min={0}
+                value={odometer}
+                onChange={(e) => setOdometer(e.target.value)}
+                placeholder="Ex.: 120000"
+              />
+            </div>
+          )}
+          {!editing && order.odometer != null && (
+            <p className="mb-1 text-sm text-muted-foreground">{order.odometer} km</p>
+          )}
           {editing ? (
             <FormSelect
               label=""
@@ -595,6 +666,94 @@ export default function ServiceOrderDetailPage() {
         </div>
       </section>
 
+
+      <section className="mb-6 rounded-2xl border border-border bg-surface p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <IconCash size={18} /> Pagamentos
+          </h2>
+          {order.status !== "CANCELLED" && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setPaymentDialogOpen(true)}>
+              Registrar pagamento
+            </Button>
+          )}
+        </div>
+
+        {(order.payments ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum pagamento registrado.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                <th className="py-2">Data</th>
+                <th className="py-2">Forma</th>
+                <th className="py-2">Registrado por</th>
+                <th className="py-2 text-right">Valor</th>
+                <th className="py-2 print:hidden" />
+              </tr>
+            </thead>
+            <tbody>
+              {(order.payments ?? []).map((payment) => (
+                <tr key={payment.id} className="border-b border-border/50 last:border-0">
+                  <td className="py-2">{formatDateTime(payment.paid_at)}</td>
+                  <td className="py-2">{PAYMENT_METHOD_LABELS[payment.method]}</td>
+                  <td className="py-2 text-muted-foreground">{payment.created_by_name ?? "—"}</td>
+                  <td className="py-2 text-right font-medium">{formatCurrency(payment.amount)}</td>
+                  <td className="py-2 text-right print:hidden">
+                    {(user?.role === "ADMIN" || user?.role === "MANAGER") && (
+                      <button
+                        type="button"
+                        onClick={() => void handleRefund(payment.id)}
+                        className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="Estornar pagamento"
+                        title="Estornar"
+                      >
+                        <IconTrash size={16} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-6 text-sm">
+          <div>
+            <p className="text-muted-foreground">Total da OS</p>
+            <p className="font-semibold">{formatCurrency(order.total_price)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Pago</p>
+            <p className="font-semibold">{formatCurrency(order.paid_total ?? 0)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Saldo</p>
+            <p className="font-semibold">{formatCurrency(order.balance ?? order.total_price)}</p>
+          </div>
+        </div>
+      </section>
+
+      {(order.events ?? []).length > 0 && (
+        <section className="mb-6 rounded-2xl border border-border bg-surface p-5">
+          <h2 className="mb-4 font-semibold">Histórico</h2>
+          <ol className="space-y-3">
+            {(order.events ?? []).map((event) => (
+              <li key={event.id} className="flex items-start gap-3 text-sm">
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                <div>
+                  <p>{event.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(event.created_at)}
+                    {event.created_by_name ? ` · ${event.created_by_name}` : ""}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       <div className="flex flex-wrap justify-end gap-2">
         {editing ? (
           <>
@@ -624,6 +783,38 @@ export default function ServiceOrderDetailPage() {
           ))
         )}
       </div>
+
+      <Dialog
+        open={paymentDialogOpen}
+        onClose={() => setPaymentDialogOpen(false)}
+        title="Registrar pagamento"
+        onSubmit={() => void handleRegisterPayment()}
+        submitLabel="Registrar"
+        loading={savingPayment}
+        maxWidth="max-w-md"
+      >
+        <div className="grid grid-cols-1 gap-4">
+          <FormSelect
+            label="Forma de pagamento"
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+          >
+            {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map((method) => (
+              <option key={method} value={method}>
+                {PAYMENT_METHOD_LABELS[method]}
+              </option>
+            ))}
+          </FormSelect>
+
+          <FormField
+            label="Valor (R$)"
+            value={paymentAmount}
+            inputMode="decimal"
+            onChange={(e) => setPaymentAmount(e.target.value)}
+            placeholder="0,00"
+          />
+        </div>
+      </Dialog>
 
       <Dialog
         open={cancelOpen}

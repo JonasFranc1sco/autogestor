@@ -11,6 +11,9 @@ import {
   IconSun,
   IconMoon,
   IconX,
+  IconPackage,
+  IconCalendar,
+  IconCash,
 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -33,6 +36,9 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
     { icon: IconCar, label: "Veículos", to: "/veiculos" },
     { icon: IconBox, label: "Produtos", to: "/produtos" },
     { icon: IconTool, label: "Serviços", to: "/servicos" },
+    { icon: IconPackage, label: "Estoque", to: "/estoque" },
+    { icon: IconCalendar, label: "Agenda", to: "/agenda" },
+    { icon: IconCash, label: "Caixa", to: "/caixa" },
     { icon: IconUsers, label: "Funcionários", to: "/funcionarios", adminOnly: true },
   ];
 

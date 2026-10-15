@@ -57,6 +57,35 @@ export interface ServiceOrderItemProduct {
   total_price?: string | number;
 }
 
+export interface ServiceOrderEvent {
+  id: string;
+  from_status: string | null;
+  to_status: string | null;
+  description: string;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface ServiceOrderPayment {
+  id: string;
+  service_order: string;
+  method: PaymentMethod;
+  amount: string;
+  paid_at: string;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export type PaymentMethod = "CASH" | "PIX" | "CREDIT" | "DEBIT" | "TRANSFER";
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  CASH: "Dinheiro",
+  PIX: "PIX",
+  CREDIT: "Cartão de crédito",
+  DEBIT: "Cartão de débito",
+  TRANSFER: "Transferência",
+};
+
 export interface ServiceOrder {
   id: string;
   number: number;
@@ -79,8 +108,13 @@ export interface ServiceOrder {
   description: string | null;
   observations: string | null;
   total_price: string;
+  odometer?: number | null;
+  paid_total?: string;
+  balance?: string;
   services?: ServiceOrderItemService[];
   products?: ServiceOrderItemProduct[];
+  events?: ServiceOrderEvent[];
+  payments?: ServiceOrderPayment[];
   created_at: string;
   updated_at: string;
   opened_at?: string;
@@ -107,7 +141,9 @@ export interface ServiceOrderCreateData {
   }[];
 }
 
-export type ServiceOrderUpdateData = Partial<ServiceOrderCreateData>;
+export type ServiceOrderUpdateData = Partial<ServiceOrderCreateData> & {
+  odometer?: number | null;
+};
 
 export async function getServiceOrders(search?: string, status?: string): Promise<ServiceOrder[]> {
   const response = await api.get<Paginated<ServiceOrder>>("/api/service-orders/", {
@@ -138,4 +174,22 @@ export async function updateServiceOrder(id: string, data: ServiceOrderUpdateDat
 export async function changeServiceOrderStatus(id: string, status: ServiceOrderStatus): Promise<ServiceOrder> {
   const response = await api.post<ServiceOrder>(`/api/service-orders/${id}/change-status/`, { status });
   return response.data;
+}
+
+
+export async function getServiceOrderPayments(id: string): Promise<ServiceOrderPayment[]> {
+  const response = await api.get<ServiceOrderPayment[]>(`/api/service-orders/${id}/payments/`);
+  return response.data;
+}
+
+export async function registerServiceOrderPayment(
+  id: string,
+  data: { method: PaymentMethod; amount: string },
+): Promise<ServiceOrderPayment> {
+  const response = await api.post<ServiceOrderPayment>(`/api/service-orders/${id}/payments/`, data);
+  return response.data;
+}
+
+export async function refundServiceOrderPayment(id: string, paymentId: string): Promise<void> {
+  await api.delete(`/api/service-orders/${id}/payments/${paymentId}/`);
 }
