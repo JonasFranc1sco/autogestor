@@ -1,6 +1,8 @@
 from rest_framework import serializers
-from .models import Product
+from .models import Product, StockMovement
+from core.tenancy import TenantPrimaryKeyRelatedField
 from users.models import Role
+from service_order.models import ServiceOrder
 from core.tenancy import tenant_of
 
 HIDDEN_COST_FIELDS = ("cost_price", "margin_percentage")
@@ -54,3 +56,51 @@ class ProductsSerializer(serializers.ModelSerializer):
                 for field in HIDDEN_COST_FIELDS:
                     data.pop(field, None)
         return data
+
+
+class StockMovementSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.full_name", read_only=True, default=None)
+    product = TenantPrimaryKeyRelatedField(queryset=Product.objects.all())
+    service_order = TenantPrimaryKeyRelatedField(
+        queryset=ServiceOrder.objects.all(), required=False, allow_null=True
+    )
+
+    class Meta:
+        model = StockMovement
+        fields = [
+            'id', 'product', 'product_name', 'movement_type', 'quantity',
+            'reason', 'service_order', 'created_by', 'created_by_name',
+            'stock_after', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_by', 'created_at', 'stock_after']
+
+    def validate(self, attrs):
+        movement_type = attrs.get("movement_type")
+        quantity = attrs.get("quantity")
+
+        if quantity == 0:
+            raise serializers.ValidationError(
+                {"quantity": "A quantidade da movimentação não pode ser zero."}
+            )
+        if movement_type == StockMovement.MovementType.IN and quantity < 0:
+            raise serializers.ValidationError(
+                {"quantity": "Entradas devem ter quantidade positiva."}
+            )
+        if movement_type == StockMovement.MovementType.OUT and quantity > 0:
+            raise serializers.ValidationError(
+                {"quantity": "Saídas devem ter quantidade negativa."}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        from products.services.stock import StockService
+
+        return StockService.register_movement(
+            product=validated_data["product"],
+            movement_type=validated_data["movement_type"],
+            quantity=validated_data["quantity"],
+            reason=validated_data.get("reason", ""),
+            service_order=validated_data.get("service_order"),
+            user=validated_data.get("created_by"),
+        )

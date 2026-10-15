@@ -88,6 +88,7 @@ INSTALLED_APPS = [
     'employees',
     'service_order',
     'services',
+    'scheduling',
 ]
 
 REST_FRAMEWORK = {

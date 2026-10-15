@@ -2,7 +2,10 @@ from decimal import Decimal
 from django.db import transaction
 from rest_framework import serializers
 
-from .models import ServiceOrder, ServiceOrderService, ServiceOrderProduct
+from .models import (
+    ServiceOrder, ServiceOrderService, ServiceOrderProduct,
+    ServiceOrderEvent, ServiceOrderPayment,
+)
 from clients.models import Client
 from clients.serializers import ClientSerializer
 from vehicles.models import Vehicle
@@ -14,6 +17,8 @@ from products.serializers import ProductsSerializer
 from services.models import Service
 from services.serializers import ServiceSerializer
 from core.tenancy import TenantPrimaryKeyRelatedField
+from products.services.stock import StockService
+from products.models import StockMovement
 
 
 class ServiceOrderServiceSerializer(serializers.ModelSerializer):
@@ -86,6 +91,44 @@ class ServiceOrderProductSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class ServiceOrderEventSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(
+        source="created_by.full_name", read_only=True, default=None
+    )
+
+    class Meta:
+        model = ServiceOrderEvent
+        fields = [
+            "id", "from_status", "to_status", "description",
+            "created_by_name", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class ServiceOrderPaymentSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(
+        source="created_by.full_name", read_only=True, default=None
+    )
+    service_order = TenantPrimaryKeyRelatedField(
+        queryset=ServiceOrder.objects.all(), required=False
+    )
+
+    class Meta:
+        model = ServiceOrderPayment
+        fields = [
+            "id", "service_order", "method", "amount",
+            "paid_at", "created_by_name", "created_at",
+        ]
+        read_only_fields = ["id", "paid_at", "created_at", "created_by_name"]
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                "O valor do pagamento deve ser maior que zero."
+            )
+        return value
+
+
 class ServiceOrderSerializer(serializers.ModelSerializer):
     client = ClientSerializer(read_only=True)
     vehicle = VehicleSerializer(read_only=True)
@@ -103,18 +146,23 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
 
     services = ServiceOrderServiceSerializer(many=True, required=False)
     products = ServiceOrderProductSerializer(many=True, required=False)
+    events = ServiceOrderEventSerializer(many=True, read_only=True)
+    payments = ServiceOrderPaymentSerializer(many=True, read_only=True)
+    paid_total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    balance = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = ServiceOrder
         fields = [
             "id", "number", "client", "vehicle", "mechanic",
             "client_id", "vehicle_id", "mechanic_id",
-            "status", "description", "observations",
-            "total_price", "services", "products",
+            "status", "description", "observations", "odometer",
+            "total_price", "paid_total", "balance",
+            "services", "products", "events", "payments",
             "created_at", "updated_at", "opened_at", "closed_at",
         ]
         read_only_fields = [
-            "number", "status", "total_price",
+            "number", "status", "total_price", "paid_total", "balance",
             "created_at", "updated_at", "opened_at", "closed_at",
         ]
 
@@ -126,6 +174,12 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"vehicle_id": "O veículo não pertence ao cliente informado."}
             )
+
+        if self.instance is not None and self.instance.status in ServiceOrder.CLOSED_STATUSES:
+            if "services" in attrs or "products" in attrs:
+                raise serializers.ValidationError(
+                    "Não é possível alterar itens de uma ordem de serviço encerrada."
+                )
 
         services_items = attrs.get("services", [])
         products_items = attrs.get("products", [])
@@ -153,6 +207,12 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             if key:
                 product_keys.add(key)
         return attrs
+
+    def _get_user(self):
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            return request.user
+        return None
 
     def _get_workshop(self, validated_data):
         workshop = validated_data.pop("workshop", None)
@@ -187,26 +247,49 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             discount=item_data.get("discount", Decimal("0.00")),
         )
 
-    def _create_product_item(self, service_order, item_data):
+    def _create_product_item(self, service_order, item_data, user=None):
         product = item_data["product"]
+        quantity = item_data.get("quantity", 1)
+
         ServiceOrderProduct.objects.create(
             service_order=service_order,
             product=product,
-            quantity=item_data.get("quantity", 1),
+            quantity=quantity,
             price=item_data.get("price", product.sale_price),
             discount=item_data.get("discount", Decimal("0.00")),
         )
 
-    def _replace_items(self, service_order, services_data, products_data, workshop):
+        StockService.register_movement(
+            product=product,
+            movement_type=StockMovement.MovementType.OUT,
+            quantity=-quantity,
+            reason=f"OS #{service_order.number} — baixa de peça",
+            service_order=service_order,
+            user=user,
+        )
+
+    def _return_products_stock(self, service_order, user=None):
+        for item in service_order.products.all():
+            StockService.register_movement(
+                product=item.product,
+                movement_type=StockMovement.MovementType.IN,
+                quantity=item.quantity,
+                reason=f"OS #{service_order.number} — devolução de peça",
+                service_order=service_order,
+                user=user,
+            )
+
+    def _replace_items(self, service_order, services_data, products_data, workshop, user=None):
         if services_data is not None:
             service_order.services.all().delete()
             for item_data in services_data:
                 self._create_service_item(service_order, item_data, workshop)
 
         if products_data is not None:
+            self._return_products_stock(service_order, user)
             service_order.products.all().delete()
             for item_data in products_data:
-                self._create_product_item(service_order, item_data)
+                self._create_product_item(service_order, item_data, user=user)
 
     @transaction.atomic
     def create(self, validated_data):
@@ -229,10 +312,17 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             self._create_service_item(service_order, item_data, workshop)
 
         for item_data in products_data:
-            self._create_product_item(service_order, item_data)
+            self._create_product_item(service_order, item_data, user=self._get_user())
 
         service_order.total_price = service_order.calculate_total()
         service_order.save(update_fields=["total_price"])
+
+        ServiceOrderEvent.objects.create(
+            service_order=service_order,
+            to_status=service_order.status,
+            description=f"OS #{service_order.number} criada",
+            created_by=self._get_user(),
+        )
 
         return service_order
 
@@ -250,6 +340,7 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
                 services_data,
                 products_data,
                 instance.workshop,
+                user=self._get_user(),
             )
 
         instance.total_price = instance.calculate_total()

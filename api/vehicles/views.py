@@ -1,4 +1,6 @@
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from .models import Vehicle
 from .serializers import VehicleSerializer
@@ -27,3 +29,25 @@ class VehicleViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         instance.is_active = False
         instance.save(update_fields=["is_active"])
+
+
+    @action(detail=True, methods=["get"], url_path="service-orders")
+    def service_orders(self, request, pk=None):
+        """Histórico de ordens de serviço do veículo."""
+        from service_order.models import ServiceOrder
+        from service_order.serializers import ServiceOrderSerializer
+
+        vehicle = self.get_object()
+        queryset = (
+            ServiceOrder.objects
+            .filter(vehicle=vehicle)
+            .select_related("client", "vehicle", "mechanic")
+            .prefetch_related(
+                "services__service", "products__product",
+                "payments", "events__created_by",
+            )
+        )
+        serializer = ServiceOrderSerializer(
+            queryset, many=True, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)

@@ -56,3 +56,65 @@ class Product(BaseModel):
 
     def __str__(self):
         return self.name
+
+
+class StockMovement(BaseModel):
+    """Movimentação de estoque (entrada, saída ou ajuste)."""
+
+    class MovementType(models.TextChoices):
+        IN = 'IN', 'Entrada'
+        OUT = 'OUT', 'Saída'
+        ADJUST = 'ADJUST', 'Ajuste'
+
+    workshop = models.ForeignKey(
+        Workshop,
+        on_delete=models.PROTECT,
+        related_name='stock_movements',
+        verbose_name='Oficina',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name='stock_movements',
+        verbose_name='Produto',
+    )
+    movement_type = models.CharField(
+        max_length=10,
+        choices=MovementType.choices,
+        verbose_name='Tipo',
+    )
+    quantity = models.IntegerField(
+        help_text="Delta da movimentação: positivo entra, negativo sai"
+    )
+    reason = models.CharField(max_length=255, help_text="Motivo da movimentação")
+    service_order = models.ForeignKey(
+        'service_order.ServiceOrder',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='stock_movements',
+        verbose_name='Ordem de Serviço',
+    )
+    created_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='stock_movements',
+        verbose_name='Registrado por',
+    )
+    stock_after = models.IntegerField(verbose_name='Estoque após movimentação')
+
+    class Meta(BaseModel.Meta):
+        verbose_name = 'Movimentação de Estoque'
+        verbose_name_plural = 'Movimentações de Estoque'
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=~Q(quantity=0),
+                name='stock_movement_quantity_not_zero',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.get_movement_type_display()} {self.quantity} — {self.product.name}"

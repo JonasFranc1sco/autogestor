@@ -96,3 +96,62 @@ class DashboardView(APIView):
             "recent_service_orders": recent_service_orders,
             "low_stock_products": low_stock_products,
         })
+
+
+class CashRegisterView(APIView):
+    """Resumo do caixa diário por forma de pagamento."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Sum
+        from django.utils import timezone
+        from datetime import datetime
+
+        from service_order.models import ServiceOrderPayment
+
+        workshop = tenant_of(request.user)
+        if workshop is None:
+            raise NotFound("Usuário da plataforma não possui oficina associada.")
+
+        date_param = request.query_params.get("date")
+        if date_param:
+            try:
+                day = datetime.strptime(date_param, "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"detail": "Data inválida. Use o formato YYYY-MM-DD."},
+                    status=400,
+                )
+        else:
+            day = timezone.localdate()
+
+        start = timezone.make_aware(datetime.combine(day, datetime.min.time()))
+        end = timezone.make_aware(datetime.combine(day, datetime.max.time()))
+
+        payments = ServiceOrderPayment.objects.filter(
+            workshop=workshop,
+            paid_at__range=(start, end),
+        )
+
+        by_method = {
+            row["method"]: row["total"]
+            for row in payments.values("method").annotate(total=Sum("amount"))
+        }
+        methods = [
+            {
+                "method": key,
+                "label": label,
+                "total": f"{by_method.get(key, 0):.2f}",
+            }
+            for key, label in ServiceOrderPayment.Method.choices
+        ]
+
+        total = payments.aggregate(total=Sum("amount"))["total"] or 0
+
+        return Response({
+            "date": day.isoformat(),
+            "methods": methods,
+            "total": f"{total:.2f}",
+            "payments_count": payments.count(),
+        })

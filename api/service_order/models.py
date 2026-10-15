@@ -51,6 +51,16 @@ class ServiceOrder(BaseModel):
     description = models.TextField(blank=True, null=True, help_text="Descrição do serviço solicitado")
     observations = models.TextField(blank=True, null=True, help_text="Observações internas")
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Valor total do serviço")
+    odometer = models.PositiveIntegerField(
+        blank=True, null=True, verbose_name="Quilometragem",
+        help_text="Hodômetro do veículo no momento do serviço",
+    )
+    stock_released = models.BooleanField(
+        default=False,
+        editable=False,
+        verbose_name="Estoque devolvido",
+        help_text="Marca que as peças da OS já foram devolvidas ao estoque",
+    )
     opened_at = models.DateTimeField(auto_now_add=True, verbose_name="Aberta em")
     closed_at = models.DateTimeField(blank=True, null=True, verbose_name="Encerrada em")
 
@@ -90,6 +100,14 @@ class ServiceOrder(BaseModel):
                 self.number = (last_number or 0) + 1
                 return super().save(*args, **kwargs)
         super().save(*args, **kwargs)
+
+    @property
+    def paid_total(self):
+        return sum(payment.amount for payment in self.payments.all())
+
+    @property
+    def balance(self):
+        return self.total_price - self.paid_total
 
     def calculate_total(self):
         services_total = sum(item.total_price for item in self.services.all())
@@ -154,3 +172,79 @@ class ServiceOrderProduct(BaseModel):
     @property
     def total_price(self):
         return (self.price * self.quantity) - self.discount
+
+
+class ServiceOrderEvent(BaseModel):
+    """Evento do histórico de uma ordem de serviço (timeline)."""
+
+    service_order = models.ForeignKey(
+        ServiceOrder,
+        on_delete=models.CASCADE,
+        related_name="events",
+        verbose_name="Ordem de Serviço",
+    )
+    from_status = models.CharField(max_length=20, blank=True, null=True, verbose_name="Status anterior")
+    to_status = models.CharField(max_length=20, blank=True, null=True, verbose_name="Novo status")
+    description = models.CharField(max_length=255, verbose_name="Descrição")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="service_order_events",
+        verbose_name="Registrado por",
+    )
+
+    class Meta(BaseModel.Meta):
+        verbose_name = 'Evento da OS'
+        verbose_name_plural = 'Eventos da OS'
+        ordering = ['created_at']
+
+
+class ServiceOrderPayment(BaseModel):
+    """Pagamento registrado para uma ordem de serviço."""
+
+    class Method(models.TextChoices):
+        CASH = "CASH", "Dinheiro"
+        PIX = "PIX", "PIX"
+        CREDIT = "CREDIT", "Cartão de crédito"
+        DEBIT = "DEBIT", "Cartão de débito"
+        TRANSFER = "TRANSFER", "Transferência"
+
+    workshop = models.ForeignKey(
+        Workshop,
+        on_delete=models.PROTECT,
+        related_name="service_order_payments",
+        verbose_name="Oficina",
+    )
+    service_order = models.ForeignKey(
+        ServiceOrder,
+        on_delete=models.PROTECT,
+        related_name="payments",
+        verbose_name="Ordem de Serviço",
+    )
+    method = models.CharField(max_length=10, choices=Method.choices, verbose_name="Forma de pagamento")
+    amount = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Valor pago")
+    paid_at = models.DateTimeField(auto_now_add=True, verbose_name="Pago em")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="service_order_payments",
+        verbose_name="Registrado por",
+    )
+
+    class Meta(BaseModel.Meta):
+        verbose_name = 'Pagamento da OS'
+        verbose_name_plural = 'Pagamentos da OS'
+        ordering = ['-paid_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount__gt=0),
+                name='service_order_payment_amount_positive',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Pagamento {self.amount} — OS #{self.service_order.number}"

@@ -2,15 +2,16 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import ServiceOrder
-from .serializers import ServiceOrderSerializer
+from .models import ServiceOrder, ServiceOrderEvent, ServiceOrderPayment
+from .serializers import ServiceOrderSerializer, ServiceOrderPaymentSerializer
 from users.models import Role
 from users.permissions import CanManageServiceOrders
 from core.tenancy import TenantViewSetMixin
+from products.services.stock import StockService
 
 
 class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
@@ -20,6 +21,7 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
         "mechanic", "mechanic__address", "created_by",
     ).prefetch_related(
         "services__service__employee__address", "products__product",
+        "payments", "events__created_by",
     ).all()
     serializer_class = ServiceOrderSerializer
 
@@ -45,7 +47,17 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         if self.request.user.role not in (Role.ADMIN, Role.MANAGER):
             raise PermissionDenied("Apenas administradores e gerentes podem excluir ordens de serviço.")
-        super().perform_destroy(instance)
+        if instance.payments.exists():
+            raise ValidationError(
+                "Estorne os pagamentos antes de excluir a ordem de serviço."
+            )
+        with transaction.atomic():
+            StockService.release_service_order_stock(
+                instance,
+                user=self.request.user,
+                reason=f"OS #{instance.number} — exclusão",
+            )
+            instance.delete()
 
     @action(detail=True, methods=["post"], url_path="change-status")
     def change_status(self, request, pk=None):
@@ -54,6 +66,7 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
                 pk=self.get_object().pk
             )
 
+            previous_status = service_order.status
             new_status = request.data.get("status")
 
             if new_status not in ServiceOrder.Status.values:
@@ -75,4 +88,84 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
 
             service_order.save(update_fields=["status", "closed_at", "updated_at"])
 
+            ServiceOrderEvent.objects.create(
+                service_order=service_order,
+                from_status=previous_status,
+                to_status=new_status,
+                description=f"Status alterado de {previous_status} para {new_status}",
+                created_by=request.user,
+            )
+
+            if new_status == ServiceOrder.Status.CANCELLED:
+                StockService.release_service_order_stock(
+                    service_order,
+                    user=request.user,
+                    reason=f"OS #{service_order.number} — cancelamento",
+                )
+
         return Response(self.get_serializer(service_order).data)
+
+
+    @action(detail=True, methods=["get", "post"], url_path="payments")
+    def payments(self, request, pk=None):
+        service_order = self.get_object()
+
+        if request.method == "GET":
+            queryset = service_order.payments.select_related("created_by")
+            serializer = ServiceOrderPaymentSerializer(queryset, many=True)
+            return Response(serializer.data)
+
+        if service_order.status == ServiceOrder.Status.CANCELLED:
+            return Response(
+                {"detail": "Não é possível registrar pagamentos em uma OS cancelada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ServiceOrderPaymentSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+
+        amount = serializer.validated_data["amount"]
+        if amount > service_order.balance:
+            return Response(
+                {"detail": f"O valor do pagamento não pode exceder o saldo da OS ({service_order.balance})."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payment = serializer.save(
+            service_order=service_order,
+            workshop=service_order.workshop,
+            created_by=request.user,
+        )
+        ServiceOrderEvent.objects.create(
+            service_order=service_order,
+            description=f"Pagamento de {payment.amount} registrado ({payment.get_method_display()})",
+            created_by=request.user,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path="payments/(?P<payment_id>[^/.]+)")
+    def delete_payment(self, request, pk=None, payment_id=None):
+        if request.user.role not in (Role.ADMIN, Role.MANAGER):
+            raise PermissionDenied(
+                "Apenas administradores e gerentes podem estornar pagamentos."
+            )
+
+        service_order = self.get_object()
+        try:
+            payment = service_order.payments.get(pk=payment_id)
+        except ServiceOrderPayment.DoesNotExist:
+            return Response(
+                {"detail": "Pagamento não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ServiceOrderEvent.objects.create(
+            service_order=service_order,
+            description=f"Pagamento de {payment.amount} estornado",
+            created_by=request.user,
+        )
+        payment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

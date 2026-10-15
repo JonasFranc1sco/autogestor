@@ -529,3 +529,287 @@ class ServiceOrderAccessTests(ServiceOrderBaseTestCase):
         self.client.force_authenticate(self.admin)
         response = self.client.delete(f"{OS_URL}{order_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+
+class ServiceOrderStockIntegrationTests(ServiceOrderBaseTestCase):
+    def test_create_order_deducts_product_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)  # 15 - 2
+
+        movements = self.product.stock_movements.all()
+        self.assertEqual(movements.count(), 1)
+        self.assertEqual(movements.first().quantity, -2)
+
+    def test_oversell_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[{"product_id": str(self.product.id), "quantity": 999, "price": "40.00"}],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+    def test_replace_products_returns_and_deducts_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {
+                "products": [
+                    {"product_id": str(self.product.id), "quantity": 1, "price": "40.00"}
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 14)  # devolve 2, baixa 1
+
+    def test_cancel_order_returns_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/change-status/",
+            {"status": "IN_PROGRESS"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/change-status/",
+            {"status": "CANCELLED"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+    def test_delete_order_returns_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        response = self.client.delete(f"{OS_URL}{order_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+
+class ServiceOrderPaymentTests(ServiceOrderBaseTestCase):
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return response.data["id"]
+
+    def test_register_payment_and_balance(self):
+        order_id = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "100.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        response = self.client.get(f"{OS_URL}{order_id}/")
+        self.assertEqual(response.data["paid_total"], "100.00")
+        self.assertEqual(response.data["balance"], "65.00")  # 165 - 100
+
+    def test_payment_amount_must_be_positive(self):
+        order_id = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "0.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_payment_blocked_on_cancelled_order(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "CANCELLED"}, format="json"
+        )
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "CASH", "amount": "50.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_refund_payment_restricted(self):
+        order_id = self.create_order()
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "CASH", "amount": "50.00"},
+            format="json",
+        )
+        payment_id = response.data["id"]
+
+        self.client.force_authenticate(self.mechanic_user)
+        response = self.client.delete(f"{OS_URL}{order_id}/payments/{payment_id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(f"{OS_URL}{order_id}/payments/{payment_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_cash_register_summary(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "100.00"},
+            format="json",
+        )
+        self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "CASH", "amount": "50.00"},
+            format="json",
+        )
+
+        response = self.client.get("/api/cash-register/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["total"], "150.00")
+        self.assertEqual(response.data["payments_count"], 2)
+        methods = {item["method"]: item["total"] for item in response.data["methods"]}
+        self.assertEqual(methods["PIX"], "100.00")
+        self.assertEqual(methods["CASH"], "50.00")
+
+    def test_status_change_records_event(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+
+        response = self.client.get(f"{OS_URL}{order_id}/")
+        events = response.data["events"]
+        self.assertGreaterEqual(len(events), 2)  # criação + transição
+        self.assertEqual(events[0]["to_status"], "OPEN")
+        self.assertEqual(events[-1]["to_status"], "IN_PROGRESS")
+
+    def test_closed_order_items_cannot_change(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "DONE"}, format="json"
+        )
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"products": []},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_odometer_saves(self):
+        order_id = self.create_order()
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"odometer": 120000},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["odometer"], 120000)
+
+    def test_vehicle_history_endpoint(self):
+        self.create_order()
+        response = self.client.get(f"/api/vehicles/{self.vehicle.id}/service-orders/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["number"], 1)
+
+
+class ServiceOrderStockReleaseIdempotencyTests(ServiceOrderBaseTestCase):
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return ServiceOrder.objects.get(id=response.data["id"])
+
+    def test_cancel_then_delete_returns_stock_only_once(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "CANCELLED"}, format="json"
+        )
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+        response = self.client.delete(f"{OS_URL}{order.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+    def test_delete_done_order_does_not_return_stock(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "DONE"}, format="json"
+        )
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+        response = self.client.delete(f"{OS_URL}{order.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+    def test_delete_order_with_payments_rejected(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/payments/",
+            {"method": "CASH", "amount": "10.00"},
+            format="json",
+        )
+
+        response = self.client.delete(f"{OS_URL}{order.id}/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.assertTrue(ServiceOrder.objects.filter(id=order.id).exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+    def test_payment_above_balance_rejected(self):
+        order = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/payments/",
+            {"method": "CASH", "amount": "9999.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_payment_registers_event(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/payments/",
+            {"method": "PIX", "amount": "10.00"},
+            format="json",
+        )
+
+        response = self.client.get(f"{OS_URL}{order.id}/")
+        descriptions = [event["description"] for event in response.data["events"]]
+        self.assertTrue(any("Pagamento" in item for item in descriptions))

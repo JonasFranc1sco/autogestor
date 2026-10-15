@@ -122,3 +122,37 @@ class CanManageServiceOrders(BasePermission):
             return request.user.role in [Role.ADMIN, Role.MANAGER]
 
         return request.user.role in [Role.ADMIN, Role.MANAGER, Role.ATTENDANT, Role.MECHANIC]
+
+
+class CanManageStock(BasePermission):
+    """Movimentação de estoque: escrita apenas para admin/gerente."""
+
+    def has_permission(self, request, view): # type: ignore
+        if not request.user.is_authenticated:
+            return False
+
+        if request.method in SAFE_METHODS:
+            return True
+
+        return request.user.role in [Role.ADMIN, Role.MANAGER]
+
+
+class CanManageAppointments(BasePermission):
+    """Agendamentos: criação/edição para atendimento e gestão; transição de status também para mecânico."""
+
+    def has_permission(self, request, view): # type: ignore
+        if not request.user.is_authenticated:
+            return False
+
+        if request.method in SAFE_METHODS:
+            return True
+
+        if request.method == "POST":
+            if getattr(view, "action", None) == "change_status":
+                return request.user.role in [Role.ADMIN, Role.MANAGER, Role.ATTENDANT, Role.MECHANIC]
+            return request.user.role in [Role.ADMIN, Role.MANAGER, Role.ATTENDANT]
+
+        if request.method == "DELETE":
+            return request.user.role in [Role.ADMIN, Role.MANAGER]
+
+        return request.user.role in [Role.ADMIN, Role.MANAGER, Role.ATTENDANT]
