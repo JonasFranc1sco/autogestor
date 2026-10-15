@@ -13,14 +13,16 @@ from products.models import Product
 from products.serializers import ProductsSerializer
 from services.models import Service
 from services.serializers import ServiceSerializer
+from core.tenancy import TenantPrimaryKeyRelatedField
 
 
 class ServiceOrderServiceSerializer(serializers.ModelSerializer):
     service = ServiceSerializer(read_only=True)
-    service_id = serializers.PrimaryKeyRelatedField(
-        queryset=Service.objects.all(), write_only=True, required=False, allow_null=True
+    service_id = TenantPrimaryKeyRelatedField(
+        queryset=Service.objects.all(), write_only=True, source="service", required=False, allow_null=True
     )
     service_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -30,12 +32,31 @@ class ServiceOrderServiceSerializer(serializers.ModelSerializer):
             "price", "discount", "total_price"
         ]
 
+    def validate(self, attrs):
+        if not attrs.get("service") and not attrs.get("service_name"):
+            raise serializers.ValidationError(
+                "Informe service_id ou service_name para o serviço."
+            )
+
+        price = attrs.get("price")
+        if price is None:
+            service = attrs.get("service")
+            attrs["price"] = service.sale_price if service else Decimal("0.00")
+
+        discount = attrs.get("discount", Decimal("0.00"))
+        if discount > attrs["price"]:
+            raise serializers.ValidationError(
+                {"discount": "O desconto não pode ser maior que o preço do serviço."}
+            )
+        return attrs
+
 
 class ServiceOrderProductSerializer(serializers.ModelSerializer):
     product = ProductsSerializer(read_only=True)
-    product_id = serializers.PrimaryKeyRelatedField(
+    product_id = TenantPrimaryKeyRelatedField(
         queryset=Product.objects.all(), write_only=True, source="product"
     )
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -45,19 +66,38 @@ class ServiceOrderProductSerializer(serializers.ModelSerializer):
             "price", "discount", "total_price"
         ]
 
+    def validate(self, attrs):
+        quantity = attrs.get("quantity", 1)
+        if quantity < 1:
+            raise serializers.ValidationError(
+                {"quantity": "A quantidade deve ser maior ou igual a 1."}
+            )
+
+        product = attrs.get("product")
+        price = attrs.get("price")
+        if price is None:
+            attrs["price"] = product.sale_price if product else Decimal("0.00")
+
+        discount = attrs.get("discount", Decimal("0.00"))
+        if discount > attrs["price"] * quantity:
+            raise serializers.ValidationError(
+                {"discount": "O desconto não pode ser maior que o total do item."}
+            )
+        return attrs
+
 
 class ServiceOrderSerializer(serializers.ModelSerializer):
     client = ClientSerializer(read_only=True)
     vehicle = VehicleSerializer(read_only=True)
     mechanic = EmployeeSerializer(read_only=True)
 
-    client_id = serializers.PrimaryKeyRelatedField(
+    client_id = TenantPrimaryKeyRelatedField(
         queryset=Client.objects.all(), write_only=True, source="client"
     )
-    vehicle_id = serializers.PrimaryKeyRelatedField(
+    vehicle_id = TenantPrimaryKeyRelatedField(
         queryset=Vehicle.objects.all(), write_only=True, source="vehicle"
     )
-    mechanic_id = serializers.PrimaryKeyRelatedField(
+    mechanic_id = TenantPrimaryKeyRelatedField(
         queryset=Employee.objects.all(), write_only=True, source="mechanic", required=False, allow_null=True
     )
 
@@ -67,64 +107,152 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceOrder
         fields = [
-            "id", "client", "vehicle", "mechanic",
+            "id", "number", "client", "vehicle", "mechanic",
             "client_id", "vehicle_id", "mechanic_id",
             "status", "description", "observations",
             "total_price", "services", "products",
-            "created_at", "updated_at",
+            "created_at", "updated_at", "opened_at", "closed_at",
         ]
-        read_only_fields = ["created_at", "updated_at"]
+        read_only_fields = [
+            "number", "status", "total_price",
+            "created_at", "updated_at", "opened_at", "closed_at",
+        ]
+
+    def validate(self, attrs):
+        client = attrs.get("client") or getattr(self.instance, "client", None)
+        vehicle = attrs.get("vehicle") or getattr(self.instance, "vehicle", None)
+
+        if client and vehicle and vehicle.owner_id != client.id:
+            raise serializers.ValidationError(
+                {"vehicle_id": "O veículo não pertence ao cliente informado."}
+            )
+
+        services_items = attrs.get("services", [])
+        products_items = attrs.get("products", [])
+
+        service_keys = set()
+        for item_data in services_items:
+            service = item_data.get("service")
+            raw_name = service.name if service is not None else item_data.get("service_name")
+            key = (raw_name or "").strip().lower()
+            if key and key in service_keys:
+                raise serializers.ValidationError(
+                    {"services": "Serviço duplicado na mesma ordem de serviço."}
+                )
+            if key:
+                service_keys.add(key)
+
+        product_keys = set()
+        for item_data in products_items:
+            product = item_data.get("product")
+            key = str(product.pk) if product is not None else None
+            if key and key in product_keys:
+                raise serializers.ValidationError(
+                    {"products": "Produto duplicado na mesma ordem de serviço."}
+                )
+            if key:
+                product_keys.add(key)
+        return attrs
+
+    def _get_workshop(self, validated_data):
+        workshop = validated_data.pop("workshop", None)
+        if workshop is None:
+            request = self.context.get("request")
+            if request is not None and request.user.is_authenticated:
+                workshop = request.user.workshop
+        return workshop
+
+    def _create_service_item(self, service_order, item_data, workshop):
+        service = item_data.get("service")
+        service_name = item_data.get("service_name")
+
+        if not service and service_name:
+            service, _ = Service.objects.get_or_create(
+                name=service_name,
+                workshop=workshop,
+                is_active=True,
+                defaults={
+                    "employee": service_order.mechanic,
+                    "cost_price": item_data.get("price", Decimal("0.00")),
+                    "sale_price": item_data.get("price", Decimal("0.00")),
+                    "margin_percentage": Decimal("0.00"),
+                    "description": service_name,
+                }
+            )
+
+        ServiceOrderService.objects.create(
+            service_order=service_order,
+            service=service,
+            price=item_data.get("price", Decimal("0.00")),
+            discount=item_data.get("discount", Decimal("0.00")),
+        )
+
+    def _create_product_item(self, service_order, item_data):
+        product = item_data["product"]
+        ServiceOrderProduct.objects.create(
+            service_order=service_order,
+            product=product,
+            quantity=item_data.get("quantity", 1),
+            price=item_data.get("price", product.sale_price),
+            discount=item_data.get("discount", Decimal("0.00")),
+        )
+
+    def _replace_items(self, service_order, services_data, products_data, workshop):
+        if services_data is not None:
+            service_order.services.all().delete()
+            for item_data in services_data:
+                self._create_service_item(service_order, item_data, workshop)
+
+        if products_data is not None:
+            service_order.products.all().delete()
+            for item_data in products_data:
+                self._create_product_item(service_order, item_data)
 
     @transaction.atomic
     def create(self, validated_data):
         services_data = validated_data.pop("services", [])
         products_data = validated_data.pop("products", [])
 
-        service_order = ServiceOrder.objects.create(**validated_data)
-
-        for s_data in services_data:
-            service = s_data.get("service_id")
-            service_name = s_data.get("service_name")
-            price = s_data.get("price", Decimal("0.00"))
-            discount = s_data.get("discount", Decimal("0.00"))
-
-            if not service and service_name:
-                service, _ = Service.objects.get_or_create(
-                    name=service_name,
-                    defaults={
-                        "employee": service_order.mechanic,
-                        "cost_price": price,
-                        "sale_price": price,
-                        "margin_percentage": Decimal("0.00"),
-                        "description": service_name,
-                    }
-                )
-
-            if service:
-                ServiceOrderService.objects.create(
-                    service_order=service_order,
-                    service=service,
-                    price=price,
-                    discount=discount,
-                )
-
-        for p_data in products_data:
-            product = p_data.get("product")
-            quantity = p_data.get("quantity", 1)
-            price = p_data.get("price", product.sale_price if product else Decimal("0.00"))
-            discount = p_data.get("discount", Decimal("0.00"))
-
-            ServiceOrderProduct.objects.create(
-                service_order=service_order,
-                product=product,
-                quantity=quantity,
-                price=price,
-                discount=discount,
+        workshop = self._get_workshop(validated_data)
+        if workshop is None:
+            raise serializers.ValidationError(
+                "Não foi possível identificar a oficina para criar a ordem de serviço."
             )
 
-        calculated = service_order.calculate_total()
-        if calculated > 0 or not service_order.total_price:
-            service_order.total_price = calculated
-            service_order.save(update_fields=["total_price"])
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            validated_data.setdefault("created_by", request.user)
+
+        service_order = ServiceOrder.objects.create(workshop=workshop, **validated_data)
+
+        for item_data in services_data:
+            self._create_service_item(service_order, item_data, workshop)
+
+        for item_data in products_data:
+            self._create_product_item(service_order, item_data)
+
+        service_order.total_price = service_order.calculate_total()
+        service_order.save(update_fields=["total_price"])
 
         return service_order
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        services_data = validated_data.pop("services", None)
+        products_data = validated_data.pop("products", None)
+        validated_data.pop("workshop", None)
+
+        instance = super().update(instance, validated_data)
+
+        if services_data is not None or products_data is not None:
+            self._replace_items(
+                instance,
+                services_data,
+                products_data,
+                instance.workshop,
+            )
+
+        instance.total_price = instance.calculate_total()
+        instance.save(update_fields=["total_price"])
+
+        return instance

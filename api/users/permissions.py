@@ -82,3 +82,43 @@ class CanManageEmployees(BasePermission):
             return True
         
         return request.user.role in [Role.ADMIN, Role.MANAGER]
+
+class CanManageServices(BasePermission):
+    """Catálogo de serviços: leitura para todos os papéis, escrita para admin/gerente."""
+
+    def has_permission(self, request, view): # type: ignore
+        if not request.user.is_authenticated:
+            return False
+
+        if request.method in SAFE_METHODS:
+            return True
+
+        return request.user.role in [Role.ADMIN, Role.MANAGER]
+
+
+class CanManageServiceOrders(BasePermission):
+    """Ordens de serviço.
+
+    Criação: atendimento e gestão (mecânico não cria OS com preços).
+    Atualização: gestão, atendimento e mecânico (o ViewSet restringe os
+    campos que o mecânico pode alterar).
+    Exclusão: apenas admin/gerente.
+    """
+
+    def has_permission(self, request, view): # type: ignore
+        if not request.user.is_authenticated:
+            return False
+
+        if request.method in SAFE_METHODS:
+            return True
+
+        if request.method == "POST":
+            # Transição de status é permitida ao mecânico; criação de OS não.
+            if getattr(view, "action", None) == "change_status":
+                return request.user.role in [Role.ADMIN, Role.MANAGER, Role.ATTENDANT, Role.MECHANIC]
+            return request.user.role in [Role.ADMIN, Role.MANAGER, Role.ATTENDANT]
+
+        if request.method == "DELETE":
+            return request.user.role in [Role.ADMIN, Role.MANAGER]
+
+        return request.user.role in [Role.ADMIN, Role.MANAGER, Role.ATTENDANT, Role.MECHANIC]

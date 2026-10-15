@@ -1,10 +1,56 @@
 from rest_framework import serializers
 from .models import Product
+from users.models import Role
+from core.tenancy import tenant_of
+
+HIDDEN_COST_FIELDS = ("cost_price", "margin_percentage")
+
 
 class ProductsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
-        fields = ['id', 'name', 'reference_code', 'barcode', 'description', 'supplier', 'brand',
+        fields = ['id', 'name', 'reference_code', 'barcode', 'description', 'application', 'supplier', 'brand',
                   'cost_price', 'margin_percentage', 'sale_price', 'stock_quantity', 'min_stock_quantity',
                   'location', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
+
+    def _validate_unique(self, value, field, label):
+        if not value:
+            return value
+
+        queryset = Product.objects.filter(**{field: value, "is_active": True})
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            workshop = tenant_of(request.user)
+            if workshop is not None:
+                queryset = queryset.filter(workshop=workshop)
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+
+        if queryset.exists():
+            raise serializers.ValidationError(
+                f"Já existe um produto ativo com este {label}."
+            )
+        return value
+
+    def validate_barcode(self, value):
+        return self._validate_unique(value, "barcode", "código de barras")
+
+    def validate_reference_code(self, value):
+        return self._validate_unique(value, "reference_code", "código de referência")
+
+    def validate_stock_quantity(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                "A quantidade em estoque não pode ser negativa."
+            )
+        return value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if request is not None and request.user.is_authenticated:
+            if request.user.role not in (Role.ADMIN, Role.MANAGER) and not request.user.is_superuser:
+                for field in HIDDEN_COST_FIELDS:
+                    data.pop(field, None)
+        return data

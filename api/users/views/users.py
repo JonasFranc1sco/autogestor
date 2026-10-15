@@ -4,14 +4,15 @@ from rest_framework.permissions import IsAuthenticated
 from users.models import User
 from users.permissions import IsAdmin, IsManagerOrAdmin, IsOwnerOrAdmin
 from users.serializers.user import UserUpdateSerializer, UserCreateSerializer, UserListSerializer, UserDetailSerializer
+from core.tenancy import scope_queryset
 # Create your views here.
 
 class UserViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self): #type: ignore
-        queryset = User.objects.all()
+        queryset = scope_queryset(self.request.user, User.objects.all())
         
-        return queryset.order_by("full_name")
+        return queryset.filter(is_active=True).order_by("full_name")
     
     
     def get_serializer_class(self): #type: ignore
@@ -31,7 +32,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserUpdateSerializer
         
     def perform_create(self, serializer):
-        serializer.save()
+        serializer.save(workshop=self.request.user.workshop)
         
     def perform_update(self, serializer):
         serializer.save()
