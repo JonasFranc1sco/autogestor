@@ -11,7 +11,8 @@ class RefreshView(APIView):
     authentication_classes = []
     permission_classes = []
 
-    throttle_scope = "auth"
+    # Refresh usa cookie httpOnly com token válido — não é força-bruta,
+    # então não compartilha o limite do login (derrubaria sessões legítimas).
 
     def post(self, request):
 
