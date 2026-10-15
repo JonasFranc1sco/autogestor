@@ -57,16 +57,41 @@ Cookie `refresh_token` enviado automaticamente.
 
 ---
 
+### Auth — Registro (nova oficina)
+
+```
+POST /api/auth/register/
+```
+
+Cria a oficina e o usuário administrador (owner), retornando os mesmos
+tokens do login.
+
+**Request:**
+```json
+{
+  "workshop": { "name": "Oficina Nova", "cnpj": "12.345.678/0001-90" },
+  "full_name": "Maria Dona",
+  "email": "maria@oficinanova.com",
+  "password": "senhaForte123"
+}
+```
+
+**Response (201):**
+```json
+{ "access": "eyJ..." }
+```
+
+---
+
 ### Auth — Logout
 
 ```
 POST /api/auth/logout/
 ```
 
-**Request:**
-```json
-{ "refresh": "eyJ..." }
-```
+Usa o cookie `refresh_token` automaticamente (o body `{ "refresh": "..." }`
+ainda é aceito como alternativa). Invalida o token na blacklist e limpa o
+cookie.
 
 **Response:** `205 Reset Content`
 
@@ -75,9 +100,9 @@ POST /api/auth/logout/
 ### Profile
 
 ```
-GET  /api/profile/          — Obter perfil
-PATCH /api/profile/         — Atualizar nome
-POST /api/profile/change-password — Alterar senha
+GET  /api/profile/            — Obter perfil (inclui dados da oficina)
+PATCH /api/profile/           — Atualizar nome
+POST /api/profile/change-password/ — Alterar senha
 ```
 
 ---
@@ -94,16 +119,57 @@ DELETE /api/users/{id}/     — Soft delete (IsAdmin)
 
 ---
 
+### Workshop
+
+```
+GET   /api/workshop/ — Dados da oficina do usuário autenticado
+PATCH /api/workshop/ — Atualizar dados da oficina (IsManagerOrAdmin)
+```
+
+---
+
+### Ordens de Serviço — transição de status
+
+```
+POST /api/service-orders/{id}/change-status/
+```
+
+**Request:**
+```json
+{ "status": "IN_PROGRESS" }
+```
+
+Transições válidas: `OPEN → IN_PROGRESS | WAITING_PARTS | WAITING_CLIENT | CANCELLED`,
+`IN_PROGRESS → WAITING_PARTS | WAITING_CLIENT | DONE | CANCELLED`,
+`WAITING_* → IN_PROGRESS | CANCELLED`. `DONE` e `CANCELLED` são terminais.
+
+---
+
+## Paginação e Busca
+
+Todas as listas usam paginação por página:
+
+```json
+{ "count": 120, "next": "...", "previous": null, "results": [ ... ] }
+```
+
+Parâmetros: `page`, `page_size` (máx. 200), `search`, `ordering` e filtros
+por campo (ex: `?status=OPEN`, `?client=<id>`).
+
+---
+
 ## Tabela Resumo
 
 | Método | Rota | Auth | Descrição |
 |--------|------|------|-----------|
 | POST | `/api/auth/login/` | Não | Login |
+| POST | `/api/auth/register/` | Não | Cadastrar oficina |
 | POST | `/api/auth/refresh/` | Cookie | Renovar token |
-| POST | `/api/auth/logout/` | JWT | Logout |
+| POST | `/api/auth/logout/` | JWT + Cookie | Logout |
 | GET | `/api/profile/` | JWT | Perfil |
 | PATCH | `/api/profile/` | JWT | Atualizar perfil |
-| POST | `/api/profile/change-password` | JWT | Alterar senha |
+| POST | `/api/profile/change-password/` | JWT | Alterar senha |
+| GET | `/api/workshop/` | JWT | Dados da oficina |
 | GET | `/api/users/` | IsManager | Listar |
 | POST | `/api/users/` | IsAdmin | Criar |
 | GET | `/api/users/{id}/` | IsOwnerOrAdmin | Detalhes |

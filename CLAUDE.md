@@ -18,7 +18,7 @@ autogestor/
 
 ## Stack
 
-- **Backend:** Python 3.12, Django 6.0.8, DRF 3.17.1, SimpleJWT 5.5.1
+- **Backend:** Python 3.12, Django 6.0.8, DRF 3.17.1, SimpleJWT 5.5.1, django-filter
 - **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui base-nova
 - **Banco:** PostgreSQL 16 (produção) / SQLite (dev)
 - **Auth:** JWT com refresh token httponly cookie
@@ -42,13 +42,22 @@ make createsuperuser  # Criar admin
 - Frontend usa **path alias** `@/` para `src/`
 - Backend usa **ViewSets** com DRF
 - Auth via **JWT** com refresh em cookie httponly
+- **Multi-tenant (SaaS):** todo model de negócio tem FK `workshop`; o
+  isolamento é aplicado por `core/tenancy.py` (`TenantViewSetMixin`,
+  `scope_queryset`, `TenantPrimaryKeyRelatedField`). Nunca expor dados de
+  outra oficina.
+- Soft delete via `is_active` (clientes, veículos, produtos, serviços,
+  funcionários, usuários); ordens de serviço nunca são listadas como ocultas.
+
+## Migrações
+
+As migrations iniciais foram **recriadas** em `feat(multi-tenant)`. Bancos de
+desenvolvimento antigos devem ser recriados (`rm api/db.sqlite3 && make migrate`
+ou `make down-clean && make run`).
 
 ## Bugs Conhecidos
 
-- `clients.Address` e `employees.Address` são duplicados
-- `Client.name` declarado duas vezes no código
-- Rotas de clients, vehicles, employees, products não registradas
-- Dashboard com dados hardcoded
+- Dashboard do frontend com dados hardcoded (fase 2 substitui por endpoint real)
 
 ## Deploy
 

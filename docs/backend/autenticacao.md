@@ -59,10 +59,25 @@ Fluxo detalhado do sistema de autenticação JWT.
 
 | Classe | Regra | Uso |
 |--------|-------|-----|
-| `IsAdmin` | `role == ADMIN` | Criar/deletar usuários |
-| `IsManager` | `role in [ADMIN, MANAGER]` | Listar usuários |
+| `IsAdmin` | `role == ADMIN` | Criar usuários |
+| `IsManagerOrAdmin` | `role in [ADMIN, MANAGER]` | Listar usuários, dados da oficina |
 | `IsOwnerOrAdmin` | `obj == user` ou `ADMIN` | Ver/editar perfil |
+| `CanManageClients` | escrita: ADMIN/MANAGER/ATTENDANT | Clientes |
+| `CanManageVehicles` | escrita: ADMIN/MANAGER/ATTENDANT | Veículos |
+| `CanManageProducts` | escrita: ADMIN/MANAGER/ATTENDANT | Produtos |
+| `CanManageEmployees` | escrita: ADMIN/MANAGER | Funcionários |
+| `CanManageServices` | escrita: ADMIN/MANAGER | Catálogo de serviços |
+| `CanManageServiceOrders` | escrita: ADMIN/MANAGER/ATTENDANT/MECHANIC; delete: ADMIN/MANAGER | Ordens de serviço |
 | `IsAuthenticated` | `is_authenticated` | Qualquer rota JWT |
+
+Observações:
+
+- O papel `MECHANIC` só altera `observations`/`mechanic` em OS e usa
+  `POST /api/service-orders/{id}/change-status/` para transições.
+- `cost_price`/`margin_percentage` de produtos e serviços não são expostos
+  para papéis fora de ADMIN/MANAGER.
+- Além do papel, todo acesso é filtrado pela oficina do usuário
+  (`core/tenancy.py`).
 
 ---
 
