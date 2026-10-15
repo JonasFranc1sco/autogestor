@@ -1,5 +1,9 @@
+from django.db.models import F
 from rest_framework import generics
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from core.models import Workshop
 from core.serializers import WorkshopSerializer
@@ -20,6 +24,75 @@ class WorkshopView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         workshop = tenant_of(self.request.user)
         if workshop is None:
-            from rest_framework.exceptions import NotFound
             raise NotFound("Usuário da plataforma não possui oficina associada.")
         return workshop
+
+
+class DashboardView(APIView):
+    """Indicadores da oficina para o dashboard."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Sum
+        from django.utils import timezone
+
+        from service_order.models import ServiceOrder
+        from clients.models import Client
+        from vehicles.models import Vehicle
+        from products.models import Product
+
+        workshop = tenant_of(request.user)
+        if workshop is None:
+            raise NotFound("Usuário da plataforma não possui oficina associada.")
+
+        orders = ServiceOrder.objects.filter(workshop=workshop)
+        month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        counts = {
+            "open_service_orders": orders.filter(status=ServiceOrder.Status.OPEN).count(),
+            "in_progress_service_orders": orders.filter(
+                status__in=[ServiceOrder.Status.IN_PROGRESS, ServiceOrder.Status.WAITING_PARTS, ServiceOrder.Status.WAITING_CLIENT]
+            ).count(),
+            "done_this_month": orders.filter(status=ServiceOrder.Status.DONE, closed_at__gte=month_start).count(),
+            "clients": Client.objects.filter(workshop=workshop, is_active=True).count(),
+            "vehicles": Vehicle.objects.filter(workshop=workshop, is_active=True).count(),
+        }
+
+        revenue = orders.filter(
+            status=ServiceOrder.Status.DONE, closed_at__gte=month_start
+        ).aggregate(total=Sum("total_price"))["total"] or 0
+
+        recent_service_orders = [
+            {
+                "id": str(order.id),
+                "number": order.number,
+                "client_name": order.client.name,
+                "vehicle_plate": order.vehicle.license_plate,
+                "status": order.status,
+                "total_price": str(order.total_price),
+                "created_at": order.created_at.isoformat(),
+            }
+            for order in orders.select_related("client", "vehicle")[:5]
+        ]
+
+        low_stock_products = [
+            {
+                "id": str(product.id),
+                "name": product.name,
+                "stock_quantity": product.stock_quantity,
+                "min_stock_quantity": product.min_stock_quantity,
+            }
+            for product in Product.objects.filter(
+                workshop=workshop,
+                is_active=True,
+                stock_quantity__lte=F("min_stock_quantity"),
+            ).order_by("stock_quantity")[:5]
+        ]
+
+        return Response({
+            "counts": counts,
+            "revenue_this_month": f"{revenue:.2f}",
+            "recent_service_orders": recent_service_orders,
+            "low_stock_products": low_stock_products,
+        })
