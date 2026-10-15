@@ -155,3 +155,138 @@ class CashRegisterView(APIView):
             "total": f"{total:.2f}",
             "payments_count": payments.count(),
         })
+
+
+class ReportsView(APIView):
+    """Relatórios gerenciais da oficina."""
+
+    permission_classes = [IsManagerOrAdmin]
+
+    def get(self, request):
+        from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
+        from django.utils import timezone
+        from datetime import datetime
+
+        from service_order.models import ServiceOrder, ServiceOrderService, ServiceOrderProduct, ServiceOrderPayment
+
+        workshop = tenant_of(request.user)
+        if workshop is None:
+            raise NotFound("Usuário da plataforma não possui oficina associada.")
+
+        def parse_date(param, default):
+            value = request.query_params.get(param)
+            if not value:
+                return default
+            try:
+                return datetime.strptime(value, "%Y-%m-%d").date()
+            except ValueError:
+                return None
+
+        today = timezone.localdate()
+        date_from = parse_date("date_from", today.replace(day=1))
+        date_to = parse_date("date_to", today)
+        if date_from is None or date_to is None:
+            return Response(
+                {"detail": "Datas inválidas. Use o formato YYYY-MM-DD."},
+                status=400,
+            )
+
+        start = timezone.make_aware(datetime.combine(date_from, datetime.min.time()))
+        end = timezone.make_aware(datetime.combine(date_to, datetime.max.time()))
+
+        orders = ServiceOrder.objects.filter(
+            workshop=workshop, created_at__range=(start, end)
+        )
+        done = orders.filter(status=ServiceOrder.Status.DONE)
+        payments = ServiceOrderPayment.objects.filter(
+            workshop=workshop, paid_at__range=(start, end)
+        )
+
+        money = DecimalField(max_digits=14, decimal_places=2)
+
+        top_services = [
+            {
+                "name": row["service__name"],
+                "quantity": row["total_quantity"],
+                "total": f"{row['total']:.2f}",
+            }
+            for row in (
+                ServiceOrderService.objects
+                .filter(
+                    service_order__workshop=workshop,
+                    created_at__range=(start, end),
+                )
+                .exclude(service_order__status=ServiceOrder.Status.CANCELLED)
+                .values("service__name")
+                .annotate(
+                    total_quantity=Count("id"),
+                    total=Sum(
+                        ExpressionWrapper(F("price") - F("discount"), output_field=money)
+                    ),
+                )
+                .order_by("-total")[:10]
+            )
+        ]
+
+        top_products = [
+            {
+                "name": row["product__name"],
+                "quantity": row["total_quantity"],
+                "total": f"{row['total']:.2f}",
+            }
+            for row in (
+                ServiceOrderProduct.objects
+                .filter(
+                    service_order__workshop=workshop,
+                    created_at__range=(start, end),
+                )
+                .exclude(service_order__status=ServiceOrder.Status.CANCELLED)
+                .values("product__name")
+                .annotate(
+                    total_quantity=Sum("quantity"),
+                    total=Sum(
+                        ExpressionWrapper(
+                            F("price") * F("quantity") - F("discount"),
+                            output_field=money,
+                        )
+                    ),
+                )
+                .order_by("-total")[:10]
+            )
+        ]
+
+        mechanic_productivity = [
+            {
+                "mechanic": row["mechanic__name"],
+                "orders": row["orders"],
+                "revenue": f"{row['revenue']:.2f}",
+            }
+            for row in (
+                done.exclude(mechanic=None)
+                .values("mechanic__name")
+                .annotate(orders=Count("id"), revenue=Sum("total_price"))
+                .order_by("-revenue")
+            )
+        ]
+
+        payments_by_method = [
+            {"method": row["method"], "total": f"{row['total']:.2f}"}
+            for row in (
+                payments.values("method").annotate(total=Sum("amount")).order_by("-total")
+            )
+        ]
+
+        return Response({
+            "period": {"date_from": date_from.isoformat(), "date_to": date_to.isoformat()},
+            "summary": {
+                "orders": orders.count(),
+                "done_orders": done.count(),
+                "cancelled_orders": orders.filter(status=ServiceOrder.Status.CANCELLED).count(),
+                "revenue_done": f"{(done.aggregate(total=Sum('total_price'))['total'] or 0):.2f}",
+                "received": f"{(payments.aggregate(total=Sum('amount'))['total'] or 0):.2f}",
+            },
+            "top_services": top_services,
+            "top_products": top_products,
+            "mechanic_productivity": mechanic_productivity,
+            "payments_by_method": payments_by_method,
+        })

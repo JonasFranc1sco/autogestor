@@ -106,3 +106,128 @@ class DashboardTests(APITestCase):
         self.client.force_authenticate(nomad)
         response = self.client.get(DASHBOARD_URL)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class ReportsTests(APITestCase):
+    def setUp(self):
+        self.workshop = Workshop.objects.create(name="Oficina A")
+        self.admin = User.objects.create_user(
+            email="admin@oficina.com",
+            password="senhaForte123",
+            full_name="Admin",
+            role=Role.ADMIN,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(self.admin)
+
+        client_obj = Client.objects.create(workshop=self.workshop, name="João")
+        vehicle = Vehicle.objects.create(
+            workshop=self.workshop, owner=client_obj, brand="VW", model="Gol", license_plate="BRA2E19"
+        )
+        self.order = ServiceOrder.objects.create(
+            workshop=self.workshop, client=client_obj, vehicle=vehicle,
+            status=ServiceOrder.Status.DONE, total_price=Decimal("500.00"),
+        )
+
+    def test_reports_summary(self):
+        response = self.client.get("/api/reports/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["summary"]["orders"], 1)
+        self.assertEqual(response.data["summary"]["done_orders"], 1)
+        self.assertEqual(response.data["summary"]["revenue_done"], "500.00")
+
+    def test_reports_period_filter(self):
+        response = self.client.get(
+            "/api/reports/", {"date_from": "2000-01-01", "date_to": "2000-01-31"}
+        )
+        self.assertEqual(response.data["summary"]["orders"], 0)
+
+    def test_reports_invalid_date(self):
+        response = self.client.get("/api/reports/", {"date_from": "invalida"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_reports_scoped_by_workshop(self):
+        other_workshop = Workshop.objects.create(name="Outra")
+        User.objects.create_user(
+            email="fora@teste.com", password="senhaForte123",
+            full_name="Fora", role=Role.ADMIN, workshop=other_workshop,
+        )
+        other_admin = User.objects.get(email="fora@teste.com")
+        self.client.force_authenticate(other_admin)
+        response = self.client.get("/api/reports/")
+        self.assertEqual(response.data["summary"]["orders"], 0)
+
+
+class ReportsTotalsTests(APITestCase):
+    def setUp(self):
+        self.workshop = Workshop.objects.create(name="Oficina A")
+        self.admin = User.objects.create_user(
+            email="admin@oficina.com",
+            password="senhaForte123",
+            full_name="Admin",
+            role=Role.ADMIN,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(self.admin)
+
+    def test_top_items_use_quantity_and_discount(self):
+        from products.models import Product
+        from service_order.models import ServiceOrderProduct
+
+        client_obj = Client.objects.create(workshop=self.workshop, name="João")
+        vehicle = Vehicle.objects.create(
+            workshop=self.workshop, owner=client_obj, brand="VW", model="Gol", license_plate="BRA2E19"
+        )
+        product = Product.objects.create(
+            workshop=self.workshop, name="Filtro", cost_price=10, sale_price=20
+        )
+        order = ServiceOrder.objects.create(
+            workshop=self.workshop, client=client_obj, vehicle=vehicle,
+            status=ServiceOrder.Status.DONE,
+        )
+        # 2 x 40 - 5 = 75 (e não apenas 40)
+        ServiceOrderProduct.objects.create(
+            service_order=order, product=product, quantity=2,
+            price=Decimal("40.00"), discount=Decimal("5.00"),
+        )
+
+        response = self.client.get("/api/reports/")
+        top = response.data["top_products"][0]
+        self.assertEqual(top["name"], "Filtro")
+        self.assertEqual(top["quantity"], 2)
+        self.assertEqual(top["total"], "75.00")
+
+    def test_cancelled_orders_excluded_from_ranking(self):
+        from products.models import Product
+        from service_order.models import ServiceOrderProduct
+
+        client_obj = Client.objects.create(workshop=self.workshop, name="João")
+        vehicle = Vehicle.objects.create(
+            workshop=self.workshop, owner=client_obj, brand="VW", model="Gol", license_plate="BRA2E19"
+        )
+        product = Product.objects.create(
+            workshop=self.workshop, name="Filtro", cost_price=10, sale_price=20
+        )
+        order = ServiceOrder.objects.create(
+            workshop=self.workshop, client=client_obj, vehicle=vehicle,
+            status=ServiceOrder.Status.CANCELLED,
+        )
+        ServiceOrderProduct.objects.create(
+            service_order=order, product=product, quantity=5, price=Decimal("20.00"),
+        )
+
+        response = self.client.get("/api/reports/")
+        self.assertEqual(response.data["top_products"], [])
+
+    def test_reports_requires_admin_or_manager(self):
+        attendant = User.objects.create_user(
+            email="atendente@teste.com",
+            password="senhaForte123",
+            full_name="Atendente",
+            role=Role.ATTENDANT,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(attendant)
+        response = self.client.get("/api/reports/")
+        self.assertEqual(response.status_code, 403)
