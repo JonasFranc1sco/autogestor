@@ -69,6 +69,11 @@ class ServiceOrder(BaseModel):
         return f"OS #{self.number} — {self.client.name}"
 
     def save(self, *args, **kwargs):
+        from django.utils import timezone
+
+        if self.status in self.CLOSED_STATUSES and self.closed_at is None:
+            self.closed_at = timezone.now()
+
         if self._state.adding and not self.number:
             from django.db import transaction
 
