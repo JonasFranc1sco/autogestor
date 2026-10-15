@@ -3,17 +3,18 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { getVehicles, createVehicle, type Vehicle } from "@/services/vehicle.service";
+import { getVehicles, createVehicle, type Vehicle, updateVehicle } from "@/services/vehicle.service";
 import { getClients, type Client } from "@/services/client.service";
 import { IconLoader2 } from "@tabler/icons-react";
 
 export default function VehiclesPage() {
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [saving, setSaving] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
 
   const [form, setForm] = useState({
     owner: "",
@@ -52,20 +53,56 @@ export default function VehiclesPage() {
     );
   }, [vehicles, search]);
 
-  async function handleCreate() {
+  async function handleSubmit() {
     if (!form.owner || !form.license_plate || !form.brand || !form.model) return;
 
     try {
-      setCreating(true);
-      await createVehicle({...form, owner_id: form.owner});
+      setSaving(true);
+
+      const data = {
+        ...form,
+        owner_id: form.owner,
+      };
+
+      if (selectedVehicle){
+        await updateVehicle(selectedVehicle.id, data);
+      } else {
+        await createVehicle(data);
+      }
+
       setDialogOpen(false);
-      setForm({ owner: "", license_plate: "", brand: "", model: "", color: "", chassis: "" });
+      setSelectedVehicle(null);
+
+      setForm({
+        owner: "",
+        license_plate: "",
+        brand: "",
+        model: "",
+        color: "",
+        chassis: "",
+      });
+
       await loadData();
     } catch (error) {
       console.error("Erro ao criar veículo:", error);
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
+  }
+
+  function handleEditVehicle(vehicle: Vehicle) {
+    setSelectedVehicle(vehicle);
+
+    setForm({
+      owner: vehicle.owner.id,
+      license_plate: vehicle.license_plate,
+      brand: vehicle.brand,
+      model: vehicle.model,
+      color: vehicle.color ?? "",
+      chassis: vehicle.chassis ?? "",
+    });
+
+    setDialogOpen(true);
   }
 
   return (
@@ -75,7 +112,18 @@ export default function VehiclesPage() {
         searchPlaceholder="Buscar por placa, marca, modelo ou proprietário..."
         searchValue={search}
         onSearchChange={setSearch}
-        onAdd={() => setDialogOpen(true)}
+        onAdd={() =>{
+          setSelectedVehicle(null);
+          setForm({
+            owner: "",
+            license_plate: "",
+            brand: "",
+            model: "",
+            color: "",
+            chassis: "",
+          });
+          setDialogOpen(true)
+        }}
         addLabel="Novo Veículo"
       >
         {loading ? (
@@ -102,7 +150,8 @@ export default function VehiclesPage() {
                 </TableRow>
               ) : (
                 filtered.map((vehicle) => (
-                  <TableRow key={vehicle.id}>
+                  <TableRow key={vehicle.id} onClick={() => handleEditVehicle(vehicle)}
+                  className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-medium font-mono">{vehicle.license_plate}</TableCell>
                     <TableCell>{vehicle.brand}</TableCell>
                     <TableCell>{vehicle.model}</TableCell>
@@ -118,11 +167,11 @@ export default function VehiclesPage() {
 
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="Novo Veículo"
-        onSubmit={handleCreate}
-        submitLabel="Criar Veículo"
-        loading={creating}
+        onClose={() => {setDialogOpen(false); setSelectedVehicle(null);}}
+        title={selectedVehicle ? "Editar Veículo" : "Novo Veículo"}
+        onSubmit={handleSubmit}
+        submitLabel={selectedVehicle ? "Salvar alterações" : "Criar Veículo"}
+        loading={saving}
       >
         <div className="grid gap-4">
           <div>

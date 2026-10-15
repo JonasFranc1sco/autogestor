@@ -3,15 +3,16 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { getProducts, createProduct, type Product } from "@/services/product.service";
+import { getProducts, createProduct, type Product, updateProduct } from "@/services/product.service";
 import { IconLoader2 } from "@tabler/icons-react";
 
 export default function ProductsPage() {
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [saving, setSaving] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -51,32 +52,48 @@ export default function ProductsPage() {
     );
   }, [products, search]);
 
-  async function handleCreate() {
+  async function handleSubmit() {
     if (!form.name || !form.reference_code || !form.brand) return;
 
     try {
-      setCreating(true);
-      await createProduct({
+      setSaving(true);
+      
+      const data = {
         ...form,
-        margin_percentage: form.margin_percentage || "0",
-      });
+      };
+
+      if (selectedProduct){
+        await updateProduct(selectedProduct.id, data);
+      } else {
+        await createProduct(data);
+      }
+
       setDialogOpen(false);
-      setForm({
-        name: "",
-        reference_code: "",
-        supplier: "",
-        brand: "",
-        cost_price: "",
-        margin_percentage: "",
-        sale_price: "",
-        stock_quantity: 0,
-      });
+      setSelectedProduct(null);
+
       await loadProducts();
     } catch (error) {
       console.error("Erro ao criar produto:", error);
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
+  }
+
+  function handleEditProduct(product: Product) {
+    setSelectedProduct(product);
+
+    setForm({
+      name: product.name,
+      reference_code: product.reference_code,
+      supplier: product.supplier,
+      brand: product.brand,
+      cost_price: product.cost_price,
+      margin_percentage: product.margin_percentage,
+      sale_price: product.sale_price,
+      stock_quantity: product.stock_quantity,
+    });
+
+    setDialogOpen(true);
   }
 
   return (
@@ -86,7 +103,20 @@ export default function ProductsPage() {
         searchPlaceholder="Buscar por nome, referência, marca ou fornecedor..."
         searchValue={search}
         onSearchChange={setSearch}
-        onAdd={() => setDialogOpen(true)}
+        onAdd={() => {
+          setSelectedProduct(null);
+          setForm({
+            name: "",
+            reference_code: "",
+            supplier: "",
+            brand: "",
+            cost_price: "",
+            margin_percentage: "",
+            sale_price: "",
+            stock_quantity: 0,
+          });
+          setDialogOpen(true)
+        }}
         addLabel="Novo Produto"
       >
         {loading ? (
@@ -114,7 +144,8 @@ export default function ProductsPage() {
                 </TableRow>
               ) : (
                 filtered.map((product) => (
-                  <TableRow key={product.id}>
+                  <TableRow key={product.id} onClick={() => handleEditProduct(product)}
+                  className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-medium">{product.name}</TableCell>
                     <TableCell className="font-mono text-xs">{product.reference_code}</TableCell>
                     <TableCell>{product.brand}</TableCell>
@@ -141,11 +172,11 @@ export default function ProductsPage() {
 
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="Novo Produto"
-        onSubmit={handleCreate}
-        submitLabel="Criar Produto"
-        loading={creating}
+        onClose={() => {setDialogOpen(false); setSelectedProduct(null);}}
+        title={selectedProduct ? "Editar Produto" : "Novo Produto"}
+        onSubmit={handleSubmit}
+        submitLabel={selectedProduct ? "Salvar alterações" : "Criar Produto"}
+        loading={saving}
       >
         <div className="grid gap-4">
           <div className="grid grid-cols-2 gap-4">

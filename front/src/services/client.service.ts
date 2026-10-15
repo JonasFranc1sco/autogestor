@@ -51,3 +51,8 @@ export async function createClient(data: ClientCreateData): Promise<Client> {
   const response = await api.post<Client>("/api/clients/", data);
   return response.data;
 }
+
+export async function updateClient(id: string, data: ClientCreateData): Promise<Client> {
+  const response = await api.patch<Client>(`/api/clients/${id}/`, data);
+  return response.data;
+}

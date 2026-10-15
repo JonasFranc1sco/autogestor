@@ -88,3 +88,8 @@ export async function createServiceOrder(data: ServiceOrderCreateData): Promise<
   const response = await api.post<ServiceOrder>("/api/service-orders/", data);
   return response.data;
 }
+
+export async function updateServiceOrder(id: string, data: ServiceOrderCreateData): Promise<ServiceOrder> {
+  const response = await api.patch<ServiceOrder>(`/api/service-orders/${id}/`, data);
+  return response.data;
+}
