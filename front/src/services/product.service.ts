@@ -43,3 +43,8 @@ export async function createProduct(data: ProductCreateData): Promise<Product> {
   const response = await api.post<Product>("/api/products/", data);
   return response.data;
 }
+
+export async function updateProduct(id: string, data: ProductCreateData): Promise<Product> {
+  const response = await api.post<Product>(`/api/products/${id}`, data);
+  return response.data;
+}

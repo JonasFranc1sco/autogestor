@@ -40,3 +40,8 @@ export async function createEmployee(data: EmployeeCreateData): Promise<Employee
   const response = await api.post<Employee>("/api/employees/", data);
   return response.data;
 }
+
+export async function updateEmployee(id: string, data: EmployeeCreateData): Promise<Employee> {
+  const response = await api.patch<Employee>(`/api/employees/${id}`, data);
+  return response.data;
+}

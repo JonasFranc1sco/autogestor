@@ -3,15 +3,16 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { getClients, createClient, type Client } from "@/services/client.service";
+import { getClients, createClient, updateClient, type Client } from "@/services/client.service";
 import { IconLoader2 } from "@tabler/icons-react";
 
 export default function ClientsPage() {
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [saving, setSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
 
   const [form, setForm] = useState({
     person_type: "PF" as "PF" | "PJ",
@@ -57,36 +58,57 @@ export default function ClientsPage() {
     );
   }, [clients, search]);
 
-  async function handleCreate() {
+  async function handleSubmit() {
     if (!form.name || !form.email || !form.document) return;
 
     try {
-      setCreating(true);
-      await createClient({
-        person_type: form.person_type,
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        document: form.document,
+      setSaving(true);
+
+      const data = {
+        ...form,
         responsible: form.responsible || undefined,
-        address: form.address,
-      });
+      };
+
+      if (selectedClient){
+        await updateClient(selectedClient.id, data);
+      } else {
+        await createClient(data);
+      }
+
       setDialogOpen(false);
-      setForm({
-        person_type: "PF",
-        name: "",
-        email: "",
-        phone: "",
-        document: "",
-        responsible: "",
-        address: { cep: "", street: "", number: "", neighborhood: "", city: "", state: "", complement: "" },
-      });
+      setSelectedClient(null);
+
       await loadClients();
+
     } catch (error) {
       console.error("Erro ao criar cliente:", error);
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
+  }
+
+  function handleEditClient(client: Client) {
+    setSelectedClient(client);
+
+    setForm({
+      person_type: client.person_type,
+      name: client.name,
+      email: client.email,
+      phone: client.phone,
+      document: client.document,
+      responsible: client.responsible ?? "",
+      address: {
+        cep: client.address.cep,
+        street: client.address.street,
+        number: client.address.number,
+        neighborhood: client.address.neighborhood,
+        city: client.address.city,
+        state: client.address.state,
+        complement: client.address.complement,
+    },
+    });
+
+    setDialogOpen(true);
   }
 
   return (
@@ -96,7 +118,28 @@ export default function ClientsPage() {
         searchPlaceholder="Buscar por nome, email ou documento..."
         searchValue={search}
         onSearchChange={setSearch}
-        onAdd={() => setDialogOpen(true)}
+        onAdd={() => {
+          setSelectedClient(null);
+          setForm({
+            person_type: "PF",
+            name: "",
+            email: "",
+            phone: "",
+            document: "",
+            responsible: "",
+            address: {
+              cep: "",
+              street: "",
+              number: "",
+              neighborhood: "",
+              city: "",
+              state: "",
+              complement: "",
+            },
+          });
+          setDialogOpen(true)
+
+        }}
         addLabel="Novo Cliente"
       >
         {loading ? (
@@ -123,7 +166,8 @@ export default function ClientsPage() {
                 </TableRow>
               ) : (
                 filtered.map((client) => (
-                  <TableRow key={client.id}>
+                  <TableRow key={client.id} onClick={() => handleEditClient(client)}
+                  className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-medium">{client.name}</TableCell>
                     <TableCell>
                       <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
@@ -143,11 +187,11 @@ export default function ClientsPage() {
 
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="Novo Cliente"
-        onSubmit={handleCreate}
-        submitLabel="Criar Cliente"
-        loading={creating}
+        onClose={() => {setDialogOpen(false); setSelectedClient(null);}}
+        title={selectedClient ? "Editar Cliente" : "Novo Cliente"}
+        onSubmit={handleSubmit}
+        submitLabel={selectedClient ? "Salvar alterações" : "Criar Cliente"}
+        loading={saving}
       >
         <div className="grid gap-4">
           <div className="grid grid-cols-2 gap-4">

@@ -34,3 +34,8 @@ export async function createVehicle(data: VehicleCreateData): Promise<Vehicle> {
   const response = await api.post<Vehicle>("/api/vehicles/", data);
   return response.data;
 }
+
+export async function updateVehicle(id: string, data: VehicleCreateData): Promise<Vehicle> {
+  const response = await api.patch<Vehicle>(`/api/vehicles/${id}/`, data);
+  return response.data;
+}

@@ -8,6 +8,7 @@ import {
   getServiceOrders,
   createServiceOrder,
   type ServiceOrder,
+  updateServiceOrder,
 } from "@/services/serviceOrder.service";
 import { getClients, type Client } from "@/services/client.service";
 import { getVehicles, type Vehicle } from "@/services/vehicle.service";
@@ -57,6 +58,8 @@ function formatCurrency(value: number | string | undefined): string {
 }
 
 export default function ServiceOrdersPage() {
+  const [selectedServiceOrder, setSelectedServiceOrder] = useState<ServiceOrder | null>(null);
+  const [saving, setSaving] = useState(false);
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -72,7 +75,6 @@ export default function ServiceOrdersPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ServiceOrder | null>(null);
 
-  const [creating, setCreating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Main OS Form
@@ -258,7 +260,7 @@ export default function ServiceOrdersPage() {
   }
 
   // Create OS
-  async function handleCreate() {
+  async function handleSubmit() {
     setErrorMessage(null);
     if (!form.client_id) {
       setErrorMessage("Por favor, selecione um cliente.");
@@ -270,35 +272,20 @@ export default function ServiceOrdersPage() {
     }
 
     try {
-      setCreating(true);
-      await createServiceOrder({
-        client_id: form.client_id,
-        vehicle_id: form.vehicle_id,
-        mechanic_id: form.mechanic_id || null,
-        description: form.description || undefined,
-        observations: form.observations || undefined,
-        total_price: grandTotal,
-        services: formServices.map((s) => ({
-          service_name: s.service_name,
-          price: s.price,
-        })),
-        products: formProducts.map((p) => ({
-          product_id: p.product_id,
-          quantity: p.quantity,
-          price: p.price,
-        })),
-      });
+      setSaving(true);
+
+      const data = {
+        ...form,
+      }
+
+      if (selectedServiceOrder){
+        await updateServiceOrder(selectedServiceOrder.id, data);
+      } else {
+        await createServiceOrder(data);
+      }
 
       setDialogOpen(false);
-      setForm({
-        client_id: "",
-        vehicle_id: "",
-        mechanic_id: "",
-        description: "",
-        observations: "",
-      });
-      setFormServices([]);
-      setFormProducts([]);
+      setSelectedServiceOrder(null);
       await loadData();
     } catch (error: unknown) {
       console.error("Erro ao criar ordem de serviço:", error);
@@ -306,8 +293,22 @@ export default function ServiceOrdersPage() {
         "Erro ao criar ordem de serviço. Verifique todos os campos obrigatórios."
       );
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
+  }
+
+  function handleEditServiceOrder(order: ServiceOrder) {
+    setSelectedServiceOrder(order);
+
+    setForm({
+      client_id: order.client.id,
+      vehicle_id: order.vehicle.id,
+      mechanic_id: order.mechanic?.id ?? "Não definido",
+      description: order.description ?? "",
+      observations: order.observations ?? "",
+    });
+
+    setDialogOpen(true);
   }
 
   function formatDate(dateStr: string) {
@@ -323,7 +324,14 @@ export default function ServiceOrdersPage() {
         onSearchChange={setSearch}
         onAdd={() => {
           setErrorMessage(null);
-          setDialogOpen(true);
+          setForm({
+            client_id: "",
+            vehicle_id: "",
+            mechanic_id: "",
+            description: "",
+            observations: "",
+          });
+          setDialogOpen(true)
         }}
         addLabel="Nova OS"
       >
@@ -354,7 +362,8 @@ export default function ServiceOrdersPage() {
                 </TableRow>
               ) : (
                 filteredOrders.map((order) => (
-                  <TableRow key={order.id}>
+                  <TableRow key={order.id} onClick={() => handleEditServiceOrder(order)}
+                  className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-mono text-xs font-semibold text-primary">
                       #{order.id.slice(0, 8)}
                     </TableCell>
@@ -404,11 +413,11 @@ export default function ServiceOrdersPage() {
       {/* Modal Principal: Nova Ordem de Serviço */}
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="Nova Ordem de Serviço"
-        onSubmit={handleCreate}
-        submitLabel="Criar Ordem de Serviço"
-        loading={creating}
+        onClose={() =>{setDialogOpen(false); setSelectedServiceOrder(null);}}
+        title={selectedServiceOrder ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"}
+        onSubmit={handleSubmit}
+        submitLabel={selectedServiceOrder ? "Salvar alterações" : "Criar Ordem de Serviço"}
+        loading={saving}
         maxWidth="max-w-3xl"
       >
         <div className="space-y-6">

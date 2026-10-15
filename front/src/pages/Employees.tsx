@@ -3,15 +3,16 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { getEmployees, createEmployee, type Employee } from "@/services/employee.service";
+import { getEmployees, createEmployee, type Employee, updateEmployee } from "@/services/employee.service";
 import { IconLoader2 } from "@tabler/icons-react";
 
 export default function EmployeesPage() {
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [saving, setSaving] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -57,34 +58,55 @@ export default function EmployeesPage() {
     );
   }, [employees, search]);
 
-  async function handleCreate() {
+  async function handleSubmit() {
     if (!form.name || !form.email || !form.document_cpf) return;
 
     try {
-      setCreating(true);
-      await createEmployee({
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        document_cpf: form.document_cpf,
-        document_rg: form.document_rg,
-        address: form.address,
-      });
+      setSaving(true);
+      
+      const data = {
+        ...form,
+      };
+
+      if (selectedEmployee){
+        await updateEmployee(selectedEmployee.id, data);
+      } else {
+        await createEmployee(data);
+      }
+
       setDialogOpen(false);
-      setForm({
-        name: "",
-        email: "",
-        phone: "",
-        document_cpf: "",
-        document_rg: "",
-        address: { cep: "", street: "", number: "", neighborhood: "", city: "", state: "", complement: "" },
-      });
+      setSelectedEmployee(null);
+
+
       await loadEmployees();
     } catch (error) {
       console.error("Erro ao criar funcionário:", error);
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
+  }
+
+  function handleEditEmployee(employee: Employee) {
+    setSelectedEmployee(employee);
+
+    setForm({
+    name: employee.name,
+    email: employee.email,
+    phone: employee.phone,
+    document_cpf: employee.document_cpf,
+    document_rg: employee.document_rg,
+    address: {
+      cep: employee.address.cep,
+      street: employee.address.street,
+      number: employee.address.number,
+      neighborhood: employee.address.neighborhood,
+      city: employee.address.city,
+      state: employee.address.state,
+      complement: employee.address.complement,
+    },
+    });
+
+    setDialogOpen(true);
   }
 
   return (
@@ -94,7 +116,26 @@ export default function EmployeesPage() {
         searchPlaceholder="Buscar por nome, email, CPF ou RG..."
         searchValue={search}
         onSearchChange={setSearch}
-        onAdd={() => setDialogOpen(true)}
+        onAdd={() => {
+          setSelectedEmployee(null);
+          setForm({
+            name: "",
+            email: "",
+            phone: "",
+            document_cpf: "",
+            document_rg: "",
+            address: {
+              cep: "",
+              street: "",
+              number: "",
+              neighborhood: "",
+              city: "",
+              state: "",
+              complement: "",
+            },
+          })
+          setDialogOpen(true)
+        }}
         addLabel="Novo Funcionário"
       >
         {loading ? (
@@ -121,7 +162,8 @@ export default function EmployeesPage() {
                 </TableRow>
               ) : (
                 filtered.map((employee) => (
-                  <TableRow key={employee.id}>
+                  <TableRow key={employee.id} onClick={() => handleEditEmployee(employee)}
+                  className="cursor-pointer hover:bg-muted/50">
                     <TableCell className="font-medium">{employee.name}</TableCell>
                     <TableCell>{employee.document_cpf || "—"}</TableCell>
                     <TableCell>{employee.document_rg || "—"}</TableCell>
@@ -137,11 +179,11 @@ export default function EmployeesPage() {
 
       <Dialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        title="Novo Funcionário"
-        onSubmit={handleCreate}
-        submitLabel="Criar Funcionário"
-        loading={creating}
+        onClose={() => {setDialogOpen(false); setSelectedEmployee(null);}}
+        title={selectedEmployee ? "Editar Funcionário" : "Novo Funcionário"}
+        onSubmit={handleSubmit}
+        submitLabel={selectedEmployee ? "Salvar alterações" : "Criar Funcionário"}
+        loading={saving}
       >
         <div className="grid gap-4">
           <div>
