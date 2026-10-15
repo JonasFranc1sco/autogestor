@@ -33,8 +33,17 @@ class NestedAddressModelSerializer(serializers.ModelSerializer):
         return self._save_address(instance, address_data)
 
     def update(self, instance, validated_data):
+        address_provided = "address" in validated_data
         address_data = validated_data.pop("address", None)
         instance = super().update(instance, validated_data)
+
+        if address_provided and address_data is None:
+            if instance.address_id:
+                instance.address.delete()
+                instance.address = None
+                instance.save(update_fields=["address"])
+            return instance
+
         return self._save_address(instance, address_data)
 
 
