@@ -10,9 +10,20 @@ export async function login(data: LoginData) {
     return response.data;
 }
 
+let refreshInFlight: Promise<{ access: string }> | null = null;
+
 export async function refresh() {
-    const response = await authApi.post<{ access: string }>("/api/auth/refresh/");
-    return response.data;
+    // Single-flight: chamadas concorrentes (ex.: StrictMode) compartilham a mesma
+    // requisição, evitando corrida na rotação do refresh token.
+    if (!refreshInFlight) {
+        refreshInFlight = authApi
+            .post<{ access: string }>("/api/auth/refresh/")
+            .then((response) => response.data)
+            .finally(() => {
+                refreshInFlight = null;
+            });
+    }
+    return refreshInFlight;
 }
 
 export async function logout() {

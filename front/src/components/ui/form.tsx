@@ -14,7 +14,7 @@ export const FormField = forwardRef<HTMLInputElement, FormFieldProps>(
       <div className="space-y-1.5">
         <label htmlFor={inputId} className="flex items-center gap-1 text-sm font-medium">
           {label}
-          {optional && <span className="text-xs text-muted-foreground">(opcional)</span>}
+          {optional && <span className="ml-1 text-xs text-muted-foreground">(opcional)</span>}
         </label>
         <Input
           id={inputId}
@@ -43,7 +43,7 @@ export function FormSelect({ label, error, optional, id, children, className, ..
     <div className="space-y-1.5">
       <label htmlFor={selectId} className="flex items-center gap-1 text-sm font-medium">
         {label}
-        {optional && <span className="text-xs text-muted-foreground">(opcional)</span>}
+        {optional && <span className="ml-1 text-xs text-muted-foreground">(opcional)</span>}
       </label>
       <select
         id={selectId}
@@ -70,7 +70,7 @@ export function FormTextarea({ label, error, optional, id, className, ...props }
     <div className="space-y-1.5">
       <label htmlFor={areaId} className="flex items-center gap-1 text-sm font-medium">
         {label}
-        {optional && <span className="text-xs text-muted-foreground">(opcional)</span>}
+        {optional && <span className="ml-1 text-xs text-muted-foreground">(opcional)</span>}
       </label>
       <textarea
         id={areaId}
