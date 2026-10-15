@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface Product {
   id: string;
@@ -35,8 +36,10 @@ export interface ProductCreateData {
 }
 
 export async function getProducts(): Promise<Product[]> {
-  const response = await api.get<Product[]>("/api/products/");
-  return response.data;
+  const response = await api.get<Paginated<Product>>("/api/products/", {
+    params: { page_size: LIST_PAGE_SIZE },
+  });
+  return response.data.results;
 }
 
 export async function createProduct(data: ProductCreateData): Promise<Product> {

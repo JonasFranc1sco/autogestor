@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface Client {
   id: string;
@@ -43,8 +44,10 @@ export interface ClientCreateData {
 }
 
 export async function getClients(): Promise<Client[]> {
-  const response = await api.get<Client[]>("/api/clients/");
-  return response.data;
+  const response = await api.get<Paginated<Client>>("/api/clients/", {
+    params: { page_size: LIST_PAGE_SIZE },
+  });
+  return response.data.results;
 }
 
 export async function createClient(data: ClientCreateData): Promise<Client> {

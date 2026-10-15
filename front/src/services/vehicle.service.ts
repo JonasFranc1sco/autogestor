@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface Vehicle {
   id: string;
@@ -8,6 +9,7 @@ export interface Vehicle {
     document: string;
   };
   license_plate: string;
+  year: number | null;
   brand: string;
   model: string;
   color: string;
@@ -19,6 +21,7 @@ export interface Vehicle {
 export interface VehicleCreateData {
   owner_id: string;
   license_plate: string;
+  year?: number;
   brand: string;
   model: string;
   color: string;
@@ -26,8 +29,10 @@ export interface VehicleCreateData {
 }
 
 export async function getVehicles(): Promise<Vehicle[]> {
-  const response = await api.get<Vehicle[]>("/api/vehicles/");
-  return response.data;
+  const response = await api.get<Paginated<Vehicle>>("/api/vehicles/", {
+    params: { page_size: LIST_PAGE_SIZE },
+  });
+  return response.data.results;
 }
 
 export async function createVehicle(data: VehicleCreateData): Promise<Vehicle> {

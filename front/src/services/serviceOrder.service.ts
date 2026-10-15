@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface ServiceOrderItemService {
   id?: string;
@@ -32,6 +33,7 @@ export interface ServiceOrderItemProduct {
 
 export interface ServiceOrder {
   id: string;
+  number: number;
   client: {
     id: string;
     name: string;
@@ -80,8 +82,10 @@ export interface ServiceOrderCreateData {
 }
 
 export async function getServiceOrders(): Promise<ServiceOrder[]> {
-  const response = await api.get<ServiceOrder[]>("/api/service-orders/");
-  return response.data;
+  const response = await api.get<Paginated<ServiceOrder>>("/api/service-orders/", {
+    params: { page_size: LIST_PAGE_SIZE },
+  });
+  return response.data.results;
 }
 
 export async function createServiceOrder(data: ServiceOrderCreateData): Promise<ServiceOrder> {
