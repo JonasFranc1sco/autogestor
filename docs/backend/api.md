@@ -169,6 +169,58 @@ Transições válidas: `OPEN → IN_PROGRESS | WAITING_PARTS | WAITING_CLIENT | 
 
 ---
 
+### Estoque
+
+```
+GET  /api/stock-movements/        — Listar movimentações (filtros: product, movement_type)
+POST /api/stock-movements/        — Registrar entrada/saída/ajuste (Admin/Gerente)
+```
+
+---
+
+### Pagamentos da OS
+
+```
+GET    /api/service-orders/{id}/payments/          — Listar pagamentos
+POST   /api/service-orders/{id}/payments/          — Registrar pagamento (método, amount)
+DELETE /api/service-orders/{id}/payments/{pid}/    — Estornar (Admin/Gerente)
+```
+
+O valor do pagamento não pode exceder o saldo da OS.
+
+---
+
+### Caixa diário
+
+```
+GET /api/cash-register/?date=YYYY-MM-DD — Resumo por forma de pagamento
+```
+
+---
+
+### Histórico
+
+```
+GET /api/vehicles/{id}/service-orders/ — Ordens de serviço do veículo
+```
+
+A timeline (`events`) e os totais (`paid_total`, `balance`, `odometer`) vêm
+no detalhe da OS.
+
+---
+
+### Agenda
+
+```
+GET    /api/appointments/       — Listar (filtros: date_from, date_to, status, client, mechanic)
+POST   /api/appointments/       — Criar agendamento
+PATCH  /api/appointments/{id}/  — Atualizar
+DELETE /api/appointments/{id}/  — Remover (Admin/Gerente)
+POST   /api/appointments/{id}/change-status/ — Realizado | Não compareceu | Cancelado
+```
+
+---
+
 ## Paginação e Busca
 
 Todas as listas usam paginação por página:
@@ -195,6 +247,12 @@ por campo (ex: `?status=OPEN`, `?client=<id>`).
 | POST | `/api/profile/change-password/` | JWT | Alterar senha |
 | GET | `/api/workshop/` | JWT | Dados da oficina |
 | GET | `/api/dashboard/` | JWT | Indicadores da oficina |
+| GET | `/api/stock-movements/` | JWT | Movimentações de estoque |
+| POST | `/api/stock-movements/` | Admin/Gerente | Registrar movimentação |
+| GET | `/api/cash-register/` | JWT | Caixa diário |
+| GET | `/api/vehicles/{id}/service-orders/` | JWT | Histórico do veículo |
+| GET | `/api/appointments/` | JWT | Listar agendamentos |
+| POST | `/api/appointments/` | JWT | Criar agendamento |
 | GET | `/api/users/` | IsManager | Listar |
 | POST | `/api/users/` | IsAdmin | Criar |
 | GET | `/api/users/{id}/` | IsOwnerOrAdmin | Detalhes |
