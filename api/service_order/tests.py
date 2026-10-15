@@ -813,3 +813,61 @@ class ServiceOrderStockReleaseIdempotencyTests(ServiceOrderBaseTestCase):
         response = self.client.get(f"{OS_URL}{order.id}/")
         descriptions = [event["description"] for event in response.data["events"]]
         self.assertTrue(any("Pagamento" in item for item in descriptions))
+
+
+class ServiceOrderAttachmentAndWarrantyTests(ServiceOrderBaseTestCase):
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return response.data["id"]
+
+    def test_add_and_list_attachments(self):
+        order_id = self.create_order()
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        file = SimpleUploadedFile("foto.jpg", b"conteudo-fake", content_type="image/jpeg")
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": file, "description": "Foto do para-choque"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        response = self.client.get(f"{OS_URL}{order_id}/attachments/")
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["description"], "Foto do para-choque")
+
+    def test_delete_attachment(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        file = SimpleUploadedFile("foto.jpg", b"conteudo-fake", content_type="image/jpeg")
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": file, "description": "Laudo"},
+            format="multipart",
+        )
+        attachment_id = response.data["id"]
+
+        response = self.client.delete(
+            f"{OS_URL}{order_id}/attachments/{attachment_id}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        response = self.client.get(f"{OS_URL}{order_id}/attachments/")
+        self.assertEqual(len(response.data), 0)
+
+    def test_warranty_days_visible(self):
+        self.catalog_service.warranty_days = 180
+        self.catalog_service.save()
+
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_id": str(self.catalog_service.id), "price": "80.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        item = response.data["services"][0]
+        self.assertEqual(item["service"]["warranty_days"], 180)

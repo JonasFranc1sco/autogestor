@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     ServiceOrder, ServiceOrderService, ServiceOrderProduct,
-    ServiceOrderEvent, ServiceOrderPayment,
+    ServiceOrderEvent, ServiceOrderPayment, ServiceOrderAttachment,
 )
 from clients.models import Client
 from clients.serializers import ClientSerializer
@@ -347,3 +347,41 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
         instance.save(update_fields=["total_price"])
 
         return instance
+
+
+class ServiceOrderAttachmentSerializer(serializers.ModelSerializer):
+    uploaded_by_name = serializers.CharField(
+        source="uploaded_by.full_name", read_only=True, default=None
+    )
+    file_url = serializers.SerializerMethodField()
+
+    ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+    class Meta:
+        model = ServiceOrderAttachment
+        fields = [
+            "id", "file", "file_url", "description",
+            "uploaded_by_name", "created_at",
+        ]
+        read_only_fields = ["id", "uploaded_by_name", "created_at"]
+
+    def validate_file(self, value):
+        import os
+
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise serializers.ValidationError(
+                "Formato não permitido. Envie JPG, PNG, WEBP ou PDF."
+            )
+        if value.size > self.MAX_FILE_SIZE:
+            raise serializers.ValidationError(
+                "O arquivo deve ter no máximo 10 MB."
+            )
+        return value
+
+    def get_file_url(self, obj):
+        request = self.context.get("request")
+        if obj.file and request is not None:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url if obj.file else None

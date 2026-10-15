@@ -24,6 +24,10 @@ class Product(BaseModel):
     margin_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Margem desejada em %")
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Preço de venda para o cliente")
 
+    warranty_days = models.PositiveIntegerField(
+        default=90, blank=True, null=True,
+        help_text="Garantia do produto em dias (0 ou vazio = sem garantia)",
+    )
     stock_quantity = models.IntegerField(default=0, help_text="Quantidade atual no estoque")
     min_stock_quantity = models.IntegerField(default=5, blank=True, null=True, help_text="Estoque mínimo para alerta de reposição")
     location = models.CharField(

@@ -17,6 +17,10 @@ class Service(BaseModel):
     cost_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Preço de custo pago ao funcionário")
     margin_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Margem desejada em %")
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Preço final do valor do serviço")
+    warranty_days = models.PositiveIntegerField(
+        default=90, blank=True, null=True,
+        help_text="Garantia do serviço em dias (0 ou vazio = sem garantia)",
+    )
 
     class Meta(BaseModel.Meta):
         verbose_name = 'Serviço'

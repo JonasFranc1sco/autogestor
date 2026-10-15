@@ -6,8 +6,14 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import ServiceOrder, ServiceOrderEvent, ServiceOrderPayment
-from .serializers import ServiceOrderSerializer, ServiceOrderPaymentSerializer
+from .models import (
+    ServiceOrder, ServiceOrderEvent, ServiceOrderPayment,
+    ServiceOrderAttachment,
+)
+from .serializers import (
+    ServiceOrderSerializer, ServiceOrderPaymentSerializer,
+    ServiceOrderAttachmentSerializer,
+)
 from users.models import Role
 from users.permissions import CanManageServiceOrders
 from core.tenancy import TenantViewSetMixin
@@ -168,4 +174,43 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
             created_by=request.user,
         )
         payment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+    @action(detail=True, methods=["get", "post"], url_path="attachments")
+    def attachments(self, request, pk=None):
+        service_order = self.get_object()
+
+        if request.method == "GET":
+            serializer = ServiceOrderAttachmentSerializer(
+                service_order.attachments.select_related("uploaded_by"),
+                many=True,
+                context=self.get_serializer_context(),
+            )
+            return Response(serializer.data)
+
+        serializer = ServiceOrderAttachmentSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(
+            service_order=service_order,
+            uploaded_by=request.user,
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["delete"], url_path="attachments/(?P<attachment_id>[^/.]+)")
+    def delete_attachment(self, request, pk=None, attachment_id=None):
+        service_order = self.get_object()
+        try:
+            attachment = service_order.attachments.get(pk=attachment_id)
+        except ServiceOrderAttachment.DoesNotExist:
+            return Response(
+                {"detail": "Anexo não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        attachment.file.delete(save=False)
+        attachment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

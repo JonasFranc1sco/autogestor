@@ -248,3 +248,40 @@ class ServiceOrderPayment(BaseModel):
 
     def __str__(self):
         return f"Pagamento {self.amount} — OS #{self.service_order.number}"
+
+
+def attachment_upload_to(instance, filename):
+    import os
+    import uuid
+
+    ext = os.path.splitext(filename)[1].lower()
+    return f"service_orders/{uuid.uuid4().hex}{ext}"
+
+
+class ServiceOrderAttachment(BaseModel):
+    """Anexo de uma ordem de serviço (fotos, laudos, notas)."""
+
+    service_order = models.ForeignKey(
+        ServiceOrder,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+        verbose_name="Ordem de Serviço",
+    )
+    file = models.FileField(upload_to=attachment_upload_to, verbose_name="Arquivo")
+    description = models.CharField(max_length=255, blank=True, null=True, verbose_name="Descrição")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="uploaded_attachments",
+        verbose_name="Enviado por",
+    )
+
+    class Meta(BaseModel.Meta):
+        verbose_name = 'Anexo da OS'
+        verbose_name_plural = 'Anexos da OS'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Anexo {self.description or self.file.name} — OS #{self.service_order.number}"
