@@ -1,195 +1,345 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { IconLoader2, IconPencil, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { getVehicles, createVehicle, type Vehicle } from "@/services/vehicle.service";
+import { FormField, FormSelect } from "@/components/ui/form";
+import {
+  getVehicles,
+  createVehicle,
+  updateVehicle,
+  deleteVehicle,
+  type Vehicle,
+} from "@/services/vehicle.service";
 import { getClients, type Client } from "@/services/client.service";
-import { IconLoader2 } from "@tabler/icons-react";
+import { maskPlate, isValidPlate } from "@/lib/masks";
+import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
+
+interface FormValues {
+  owner_id: string;
+  license_plate: string;
+  year: string;
+  brand: string;
+  model: string;
+  color: string;
+  chassis: string;
+}
+
+const emptyForm: FormValues = {
+  owner_id: "",
+  license_plate: "",
+  year: "",
+  brand: "",
+  model: "",
+  color: "",
+  chassis: "",
+};
 
 export default function VehiclesPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormValues>(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [form, setForm] = useState({
-    owner: "",
-    license_plate: "",
-    brand: "",
-    model: "",
-    color: "",
-    chassis: "",
-  });
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
+  const load = useCallback(async (query?: string) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const [vData, cData] = await Promise.all([getVehicles(), getClients()]);
-      setVehicles(vData);
-      setClients(cData);
+      setVehicles(await getVehicles(query));
     } catch (error) {
-      console.error("Erro ao carregar veículos:", error);
+      toast.error(extractApiErrorMessage(error, "Não foi possível carregar os veículos."));
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (searchRef.current) clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => void load(search), 300);
+    return () => {
+      if (searchRef.current) clearTimeout(searchRef.current);
+    };
+  }, [search, load]);
+
+  useEffect(() => {
+    getClients()
+      .then(setClients)
+      .catch(() => toast.error("Não foi possível carregar os clientes para seleção."));
+  }, []);
+
+  useEffect(() => {
+    if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
+      openCreate();
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setFieldErrors({});
+    setDialogOpen(true);
   }
 
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return vehicles.filter(
-      (v) =>
-        v.license_plate.toLowerCase().includes(term) ||
-        v.brand.toLowerCase().includes(term) ||
-        v.model.toLowerCase().includes(term) ||
-        v.owner?.name?.toLowerCase().includes(term)
-    );
-  }, [vehicles, search]);
+  function openEdit(vehicle: Vehicle) {
+    setEditingId(vehicle.id);
+    setForm({
+      owner_id: vehicle.owner.id,
+      license_plate: vehicle.license_plate ?? "",
+      year: vehicle.year ? String(vehicle.year) : "",
+      brand: vehicle.brand,
+      model: vehicle.model,
+      color: vehicle.color ?? "",
+      chassis: vehicle.chassis ?? "",
+    });
+    setFieldErrors({});
+    setDialogOpen(true);
+  }
 
-  async function handleCreate() {
-    if (!form.owner || !form.license_plate || !form.brand || !form.model) return;
+  function validate(): boolean {
+    const errors: Record<string, string> = {};
+    if (!form.owner_id) errors.owner_id = "Selecione o proprietário.";
+    if (!form.brand.trim()) errors.brand = "Informe a marca.";
+    if (!form.model.trim()) errors.model = "Informe o modelo.";
+    if (form.license_plate && !isValidPlate(form.license_plate)) {
+      errors.license_plate = "Use o formato ABC1234 ou ABC1D23.";
+    }
+    if (form.year && (Number(form.year) < 1900 || Number(form.year) > 2100)) {
+      errors.year = "Informe um ano válido.";
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  async function handleSubmit() {
+    if (!validate()) return;
+
+    setSaving(true);
+    const payload = {
+      owner_id: form.owner_id,
+      license_plate: form.license_plate ? maskPlate(form.license_plate) : null,
+      year: form.year ? Number(form.year) : null,
+      brand: form.brand.trim(),
+      model: form.model.trim(),
+      color: form.color.trim() || null,
+      chassis: form.chassis.trim() || null,
+    };
 
     try {
-      setCreating(true);
-      await createVehicle({...form, owner_id: form.owner});
+      if (editingId) {
+        await updateVehicle(editingId, payload);
+        toast.success("Veículo atualizado com sucesso.");
+      } else {
+        await createVehicle(payload);
+        toast.success("Veículo cadastrado com sucesso.");
+      }
       setDialogOpen(false);
-      setForm({ owner: "", license_plate: "", brand: "", model: "", color: "", chassis: "" });
-      await loadData();
+      await load(search);
     } catch (error) {
-      console.error("Erro ao criar veículo:", error);
+      setFieldErrors(extractFieldErrors(error));
+      toast.error(extractApiErrorMessage(error, "Não foi possível salvar o veículo."));
     } finally {
-      setCreating(false);
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteVehicle(deleteTarget.id);
+      toast.success("Veículo removido com sucesso.");
+      setDeleteTarget(null);
+      await load(search);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível remover o veículo."));
+    } finally {
+      setDeleting(false);
     }
   }
 
   return (
-    <>
-      <PageLayout
-        title="Veículos"
-        searchPlaceholder="Buscar por placa, marca, modelo ou proprietário..."
-        searchValue={search}
-        onSearchChange={setSearch}
-        onAdd={() => setDialogOpen(true)}
-        addLabel="Novo Veículo"
-      >
+    <PageLayout
+      title="Veículos"
+      searchPlaceholder="Buscar por placa, marca, modelo ou proprietário..."
+      searchValue={search}
+      onSearchChange={setSearch}
+      onAdd={openCreate}
+      addLabel="Novo Veículo"
+    >
+      <div className="rounded-2xl border border-border bg-surface">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <IconLoader2 size={24} className="animate-spin text-primary" />
+          <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
+            <IconLoader2 size={18} className="animate-spin" /> Carregando veículos...
           </div>
+        ) : vehicles.length === 0 ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">
+            {search ? "Nenhum veículo encontrado para esta busca." : "Nenhum veículo cadastrado ainda."}
+          </p>
         ) : (
-          <Table variant="card">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Placa</TableHead>
-                <TableHead>Marca</TableHead>
-                <TableHead>Modelo</TableHead>
-                <TableHead>Cor</TableHead>
-                <TableHead>Proprietário</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                    Nenhum veículo encontrado.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((vehicle) => (
-                  <TableRow key={vehicle.id}>
-                    <TableCell className="font-medium font-mono">{vehicle.license_plate}</TableCell>
-                    <TableCell>{vehicle.brand}</TableCell>
-                    <TableCell>{vehicle.model}</TableCell>
-                    <TableCell>{vehicle.color}</TableCell>
-                    <TableCell>{vehicle.owner?.name || "—"}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                  <th className="px-4 py-3">Placa</th>
+                  <th className="px-4 py-3">Veículo</th>
+                  <th className="px-4 py-3 max-md:hidden">Proprietário</th>
+                  <th className="px-4 py-3 max-lg:hidden">Ano</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vehicles.map((vehicle) => (
+                  <tr key={vehicle.id} className="border-b border-border/50 last:border-0 hover:bg-foreground/[0.02]">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{vehicle.license_plate ?? "Sem placa"}</p>
+                      <p className="text-xs text-muted-foreground md:hidden">{vehicle.owner.name}</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {vehicle.brand} {vehicle.model}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-md:hidden">{vehicle.owner.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{vehicle.year ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(vehicle)}
+                          aria-label={`Editar ${vehicle.license_plate ?? "veículo"}`}
+                          title="Editar"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                        >
+                          <IconPencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(vehicle)}
+                          aria-label={`Remover ${vehicle.license_plate ?? "veículo"}`}
+                          title="Remover"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <IconTrash size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-4 py-3 text-xs text-muted-foreground">
+              {vehicles.length} veículo(s) exibido(s)
+            </p>
+          </>
         )}
-      </PageLayout>
+      </div>
 
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title="Novo Veículo"
-        onSubmit={handleCreate}
-        submitLabel="Criar Veículo"
-        loading={creating}
+        title={editingId ? "Editar Veículo" : "Novo Veículo"}
+        onSubmit={() => void handleSubmit()}
+        submitLabel={editingId ? "Salvar alterações" : "Cadastrar"}
+        loading={saving}
+        maxWidth="max-w-2xl"
       >
-        <div className="grid gap-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Proprietário *</label>
-            <select
-              value={form.owner}
-              onChange={(e) => setForm({ ...form, owner: e.target.value })}
-              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Selecione um cliente</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} — {c.document}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormSelect
+            label="Proprietário"
+            value={form.owner_id}
+            onChange={(e) => setForm({ ...form, owner_id: e.target.value })}
+            error={fieldErrors.owner_id}
+          >
+            <option value="">Selecione o cliente...</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </FormSelect>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Placa *</label>
-              <Input
-                value={form.license_plate}
-                onChange={(e) => setForm({ ...form, license_plate: e.target.value.toUpperCase() })}
-                placeholder="ABC1D23"
-                maxLength={7}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Marca *</label>
-              <Input
-                value={form.brand}
-                onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                placeholder="Ex: Honda"
-              />
-            </div>
-          </div>
+          <FormField
+            label="Placa"
+            optional
+            value={maskPlate(form.license_plate)}
+            onChange={(e) => setForm({ ...form, license_plate: e.target.value })}
+            placeholder="BRA2E19"
+            error={fieldErrors.license_plate}
+            maxLength={7}
+          />
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Modelo *</label>
-              <Input
-                value={form.model}
-                onChange={(e) => setForm({ ...form, model: e.target.value })}
-                placeholder="Ex: Civic"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Cor</label>
-              <Input
-                value={form.color}
-                onChange={(e) => setForm({ ...form, color: e.target.value })}
-                placeholder="Ex: Prata"
-              />
-            </div>
-          </div>
+          <FormField
+            label="Marca"
+            value={form.brand}
+            onChange={(e) => setForm({ ...form, brand: e.target.value })}
+            placeholder="Volkswagen"
+            error={fieldErrors.brand}
+          />
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">Chassi</label>
-            <Input
-              value={form.chassis}
-              onChange={(e) => setForm({ ...form, chassis: e.target.value })}
-              placeholder="Número do chassi"
-            />
-          </div>
+          <FormField
+            label="Modelo"
+            value={form.model}
+            onChange={(e) => setForm({ ...form, model: e.target.value })}
+            placeholder="Gol"
+            error={fieldErrors.model}
+          />
+
+          <FormField
+            label="Ano"
+            optional
+            type="number"
+            value={form.year}
+            onChange={(e) => setForm({ ...form, year: e.target.value })}
+            placeholder="2020"
+            error={fieldErrors.year}
+          />
+
+          <FormField
+            label="Cor"
+            optional
+            value={form.color}
+            onChange={(e) => setForm({ ...form, color: e.target.value })}
+            placeholder="Prata"
+            error={fieldErrors.color}
+          />
+
+          <FormField
+            label="Chassi"
+            optional
+            value={form.chassis}
+            onChange={(e) => setForm({ ...form, chassis: e.target.value })}
+            placeholder="9BWZZZ377VT004251"
+            error={fieldErrors.chassis}
+            className="sm:col-span-2"
+          />
         </div>
       </Dialog>
-    </>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Remover veículo"
+        onSubmit={() => void handleDelete()}
+        submitLabel="Remover"
+        loading={deleting}
+        destructive
+        maxWidth="max-w-md"
+      >
+        <p className="text-sm">
+          Tem certeza que deseja remover <strong>{deleteTarget?.license_plate ?? "este veículo"}</strong>?
+          O registro será ocultado e poderá ser restaurado manualmente.
+        </p>
+      </Dialog>
+    </PageLayout>
   );
 }

@@ -1,268 +1,334 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { IconLoader2, IconPencil, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { getEmployees, createEmployee, type Employee } from "@/services/employee.service";
-import { IconLoader2 } from "@tabler/icons-react";
+import { AddressForm, emptyAddress, validateAddress, type AddressFormValues } from "@/components/layout/AddressForm";
+import { FormField } from "@/components/ui/form";
+import {
+  getEmployees,
+  createEmployee,
+  updateEmployee,
+  deleteEmployee,
+  type Employee,
+} from "@/services/employee.service";
+import { maskCpfCnpj, maskPhone, unmask, isValidCpfCnpj, toLocalPhoneDigits } from "@/lib/masks";
+import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
+
+interface FormValues {
+  name: string;
+  email: string;
+  phone: string;
+  document_cpf: string;
+  document_rg: string;
+  address: AddressFormValues;
+}
+
+const emptyForm: FormValues = {
+  name: "",
+  email: "",
+  phone: "",
+  document_cpf: "",
+  document_rg: "",
+  address: { ...emptyAddress },
+};
 
 export default function EmployeesPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormValues>(emptyForm);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    document_cpf: "",
-    document_rg: "",
-    address: {
-      cep: "",
-      street: "",
-      number: "",
-      neighborhood: "",
-      city: "",
-      state: "",
-      complement: "",
-    },
-  });
-
-  useEffect(() => {
-    loadEmployees();
-  }, []);
-
-  async function loadEmployees() {
+  const load = useCallback(async (query?: string) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await getEmployees();
-      setEmployees(data);
+      setEmployees(await getEmployees(query));
     } catch (error) {
-      console.error("Erro ao carregar funcionários:", error);
+      toast.error(extractApiErrorMessage(error, "Não foi possível carregar os funcionários."));
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (searchRef.current) clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => void load(search), 300);
+    return () => {
+      if (searchRef.current) clearTimeout(searchRef.current);
+    };
+  }, [search, load]);
+
+  useEffect(() => {
+    if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
+      openCreate();
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setFieldErrors({});
+    setDialogOpen(true);
   }
 
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return employees.filter(
-      (e) =>
-        e.name.toLowerCase().includes(term) ||
-        e.email.toLowerCase().includes(term) ||
-        e.document_cpf?.includes(term) ||
-        e.document_rg?.includes(term)
-    );
-  }, [employees, search]);
+  function openEdit(employee: Employee) {
+    setEditingId(employee.id);
+    setForm({
+      name: employee.name,
+      email: employee.email ?? "",
+      phone: toLocalPhoneDigits(employee.phone ?? ""),
+      document_cpf: employee.document_cpf ?? "",
+      document_rg: employee.document_rg ?? "",
+      address: employee.address
+        ? {
+            cep: employee.address.cep,
+            street: employee.address.street,
+            number: employee.address.number,
+            neighborhood: employee.address.neighborhood,
+            city: employee.address.city,
+            state: employee.address.state,
+            complement: employee.address.complement ?? "",
+          }
+        : { ...emptyAddress },
+    });
+    setFieldErrors({});
+    setDialogOpen(true);
+  }
 
-  async function handleCreate() {
-    if (!form.name || !form.email || !form.document_cpf) return;
+  function validate(): boolean {
+    const errors: Record<string, string> = {};
+    if (!form.name.trim()) errors.name = "Informe o nome.";
+    if (form.document_cpf && !isValidCpfCnpj(form.document_cpf)) errors.document_cpf = "Informe um CPF válido.";
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Informe um e-mail válido.";
+
+    const hasAddress = Object.values(form.address).some((value) => value.trim() !== "");
+    const addressErrors = hasAddress ? validateAddress(form.address) : {};
+
+    const merged: Record<string, string> = { ...errors };
+    for (const [key, value] of Object.entries(addressErrors)) merged[`address.${key}`] = value;
+
+    setFieldErrors(merged);
+    return Object.keys(merged).length === 0;
+  }
+
+  async function handleSubmit() {
+    if (!validate()) return;
+
+    setSaving(true);
+    const hasAddress = Object.values(form.address).some((value) => value.trim() !== "");
+    const payload = {
+      name: form.name.trim(),
+      email: form.email.trim() || null,
+      phone: form.phone ? `+55${unmask(form.phone)}` : null,
+      document_cpf: form.document_cpf ? unmask(form.document_cpf) : null,
+      document_rg: form.document_rg.trim() || null,
+      address: hasAddress ? { ...form.address, complement: form.address.complement || "" } : null,
+    };
 
     try {
-      setCreating(true);
-      await createEmployee({
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        document_cpf: form.document_cpf,
-        document_rg: form.document_rg,
-        address: form.address,
-      });
+      if (editingId) {
+        await updateEmployee(editingId, payload);
+        toast.success("Funcionário atualizado com sucesso.");
+      } else {
+        await createEmployee(payload);
+        toast.success("Funcionário cadastrado com sucesso.");
+      }
       setDialogOpen(false);
-      setForm({
-        name: "",
-        email: "",
-        phone: "",
-        document_cpf: "",
-        document_rg: "",
-        address: { cep: "", street: "", number: "", neighborhood: "", city: "", state: "", complement: "" },
-      });
-      await loadEmployees();
+      await load(search);
     } catch (error) {
-      console.error("Erro ao criar funcionário:", error);
+      setFieldErrors(extractFieldErrors(error));
+      toast.error(extractApiErrorMessage(error, "Não foi possível salvar o funcionário."));
     } finally {
-      setCreating(false);
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteEmployee(deleteTarget.id);
+      toast.success("Funcionário removido com sucesso.");
+      setDeleteTarget(null);
+      await load(search);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível remover o funcionário."));
+    } finally {
+      setDeleting(false);
     }
   }
 
   return (
-    <>
-      <PageLayout
-        title="Funcionários"
-        searchPlaceholder="Buscar por nome, email, CPF ou RG..."
-        searchValue={search}
-        onSearchChange={setSearch}
-        onAdd={() => setDialogOpen(true)}
-        addLabel="Novo Funcionário"
-      >
+    <PageLayout
+      title="Funcionários"
+      searchPlaceholder="Buscar por nome, CPF ou e-mail..."
+      searchValue={search}
+      onSearchChange={setSearch}
+      onAdd={openCreate}
+      addLabel="Novo Funcionário"
+    >
+      <div className="rounded-2xl border border-border bg-surface">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <IconLoader2 size={24} className="animate-spin text-primary" />
+          <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
+            <IconLoader2 size={18} className="animate-spin" /> Carregando funcionários...
           </div>
+        ) : employees.length === 0 ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">
+            {search ? "Nenhum funcionário encontrado para esta busca." : "Nenhum funcionário cadastrado ainda."}
+          </p>
         ) : (
-          <Table variant="card">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>CPF</TableHead>
-                <TableHead>RG</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Telefone</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                    Nenhum funcionário encontrado.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((employee) => (
-                  <TableRow key={employee.id}>
-                    <TableCell className="font-medium">{employee.name}</TableCell>
-                    <TableCell>{employee.document_cpf || "—"}</TableCell>
-                    <TableCell>{employee.document_rg || "—"}</TableCell>
-                    <TableCell>{employee.email}</TableCell>
-                    <TableCell>{employee.phone || "—"}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                  <th className="px-4 py-3">Nome</th>
+                  <th className="px-4 py-3 max-sm:hidden">CPF</th>
+                  <th className="px-4 py-3 max-md:hidden">Contato</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((employee) => (
+                  <tr key={employee.id} className="border-b border-border/50 last:border-0 hover:bg-foreground/[0.02]">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{employee.name}</p>
+                      <p className="text-xs text-muted-foreground sm:hidden">{employee.document_cpf ?? "Sem CPF"}</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-sm:hidden">{employee.document_cpf ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-md:hidden">
+                      {employee.phone ?? "—"}
+                      {employee.email ? ` · ${employee.email}` : ""}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(employee)}
+                          aria-label={`Editar ${employee.name}`}
+                          title="Editar"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                        >
+                          <IconPencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(employee)}
+                          aria-label={`Remover ${employee.name}`}
+                          title="Remover"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <IconTrash size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-4 py-3 text-xs text-muted-foreground">
+              {employees.length} funcionário(s) exibido(s)
+            </p>
+          </>
         )}
-      </PageLayout>
+      </div>
 
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title="Novo Funcionário"
-        onSubmit={handleCreate}
-        submitLabel="Criar Funcionário"
-        loading={creating}
+        title={editingId ? "Editar Funcionário" : "Novo Funcionário"}
+        onSubmit={() => void handleSubmit()}
+        submitLabel={editingId ? "Salvar alterações" : "Cadastrar"}
+        loading={saving}
+        maxWidth="max-w-2xl"
       >
-        <div className="grid gap-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Nome *</label>
-            <Input
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Nome completo"
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField
+            label="Nome"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="Nome completo"
+            error={fieldErrors.name}
+          />
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Email *</label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="email@exemplo.com"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Telefone</label>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-          </div>
+          <FormField
+            label="CPF"
+            optional
+            value={maskCpfCnpj(form.document_cpf)}
+            onChange={(e) => setForm({ ...form, document_cpf: e.target.value })}
+            placeholder="000.000.000-00"
+            error={fieldErrors.document_cpf}
+          />
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">CPF *</label>
-              <Input
-                value={form.document_cpf}
-                onChange={(e) => setForm({ ...form, document_cpf: e.target.value })}
-                placeholder="000.000.000-00"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">RG</label>
-              <Input
-                value={form.document_rg}
-                onChange={(e) => setForm({ ...form, document_rg: e.target.value })}
-                placeholder="00.000.000-0"
-              />
-            </div>
-          </div>
+          <FormField
+            label="RG"
+            optional
+            value={form.document_rg}
+            onChange={(e) => setForm({ ...form, document_rg: e.target.value })}
+            placeholder="RG"
+            error={fieldErrors.document_rg}
+          />
 
-          <div className="border-t border-border pt-4">
-            <p className="mb-3 text-sm font-semibold text-muted-foreground">Endereço</p>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">CEP *</label>
-                <Input
-                  value={form.address.cep}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, cep: e.target.value } })}
-                  placeholder="00000000"
-                  maxLength={8}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="mb-1 block text-sm font-medium">Rua *</label>
-                <Input
-                  value={form.address.street}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, street: e.target.value } })}
-                  placeholder="Nome da rua"
-                />
-              </div>
-            </div>
+          <FormField
+            label="Telefone"
+            optional
+            value={maskPhone(form.phone)}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            placeholder="(62) 99999-0000"
+            error={fieldErrors.phone}
+          />
 
-            <div className="mt-4 grid grid-cols-3 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Número *</label>
-                <Input
-                  value={form.address.number}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, number: e.target.value } })}
-                  placeholder="123"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Bairro *</label>
-                <Input
-                  value={form.address.neighborhood}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, neighborhood: e.target.value } })}
-                  placeholder="Bairro"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Cidade *</label>
-                <Input
-                  value={form.address.city}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, city: e.target.value } })}
-                  placeholder="Cidade"
-                />
-              </div>
-            </div>
+          <FormField
+            label="E-mail"
+            optional
+            type="email"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            placeholder="funcionario@email.com"
+            error={fieldErrors.email}
+          />
+        </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Estado *</label>
-                <Input
-                  value={form.address.state}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, state: e.target.value.toUpperCase() } })}
-                  placeholder="UF"
-                  maxLength={2}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Complemento</label>
-                <Input
-                  value={form.address.complement}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, complement: e.target.value } })}
-                  placeholder="Apto, Bloco, etc."
-                />
-              </div>
-            </div>
-          </div>
+        <div className="mt-6">
+          <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Endereço</h3>
+          <AddressForm
+            values={form.address}
+            onChange={(address) => setForm({ ...form, address })}
+            errors={Object.fromEntries(
+              Object.entries(fieldErrors)
+                .filter(([key]) => key.startsWith("address."))
+                .map(([key, value]) => [key.replace("address.", ""), value]),
+            )}
+          />
         </div>
       </Dialog>
-    </>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Remover funcionário"
+        onSubmit={() => void handleDelete()}
+        submitLabel="Remover"
+        loading={deleting}
+        destructive
+        maxWidth="max-w-md"
+      >
+        <p className="text-sm">
+          Tem certeza que deseja remover <strong>{deleteTarget?.name}</strong>? O registro será
+          ocultado e poderá ser restaurado manualmente.
+        </p>
+      </Dialog>
+    </PageLayout>
   );
 }

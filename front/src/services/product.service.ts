@@ -4,16 +4,17 @@ import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
 export interface Product {
   id: string;
   name: string;
-  reference_code: string;
+  reference_code: string | null;
   barcode: string | null;
   description: string | null;
-  supplier: string;
-  brand: string;
-  cost_price: string;
-  margin_percentage: string;
+  application?: string | null;
+  supplier: string | null;
+  brand: string | null;
+  cost_price?: string;
+  margin_percentage?: string;
   sale_price: string;
   stock_quantity: number;
-  min_stock_quantity: number;
+  min_stock_quantity: number | null;
   location: string | null;
   is_active: boolean;
   created_at: string;
@@ -22,22 +23,25 @@ export interface Product {
 
 export interface ProductCreateData {
   name: string;
-  reference_code: string;
-  barcode?: string;
-  description?: string;
-  supplier: string;
-  brand: string;
+  reference_code?: string | null;
+  barcode?: string | null;
+  description?: string | null;
+  application?: string | null;
+  supplier?: string | null;
+  brand?: string | null;
   cost_price: string;
-  margin_percentage: string;
+  margin_percentage?: string;
   sale_price: string;
   stock_quantity: number;
-  min_stock_quantity?: number;
-  location?: string;
+  min_stock_quantity?: number | null;
+  location?: string | null;
 }
 
-export async function getProducts(): Promise<Product[]> {
+export type ProductUpdateData = Partial<ProductCreateData>;
+
+export async function getProducts(search?: string): Promise<Product[]> {
   const response = await api.get<Paginated<Product>>("/api/products/", {
-    params: { page_size: LIST_PAGE_SIZE },
+    params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
   });
   return response.data.results;
 }
@@ -45,4 +49,13 @@ export async function getProducts(): Promise<Product[]> {
 export async function createProduct(data: ProductCreateData): Promise<Product> {
   const response = await api.post<Product>("/api/products/", data);
   return response.data;
+}
+
+export async function updateProduct(id: string, data: ProductUpdateData): Promise<Product> {
+  const response = await api.patch<Product>(`/api/products/${id}/`, data);
+  return response.data;
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  await api.delete(`/api/products/${id}/`);
 }

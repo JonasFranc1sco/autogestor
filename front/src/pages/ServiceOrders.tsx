@@ -1,930 +1,598 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { IconLoader2, IconPlus, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { FormField, FormSelect, FormTextarea } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   getServiceOrders,
   createServiceOrder,
+  STATUS_LABELS,
   type ServiceOrder,
+  type ServiceOrderStatus,
 } from "@/services/serviceOrder.service";
 import { getClients, type Client } from "@/services/client.service";
 import { getVehicles, type Vehicle } from "@/services/vehicle.service";
 import { getEmployees, type Employee } from "@/services/employee.service";
+import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
-import {
-  IconLoader2,
-  IconPlus,
-  IconTrash,
-  IconTools,
-  IconPackage,
-  IconSearch,
-  IconEye,
-  IconAlertCircle,
-} from "@tabler/icons-react";
+import { formatCurrency, formatDate, parseDecimalValue } from "@/lib/format";
+import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
-interface FormServiceItem {
-  id: string;
-  service_name: string;
-  price: number;
-}
-
-interface FormProductItem {
-  id: string;
-  product_id: string;
-  product_name: string;
-  reference_code?: string;
-  quantity: number;
-  price: number;
-  subtotal: number;
-}
-
-const statusConfig: Record<string, { label: string; className: string }> = {
-  OPEN: { label: "Aberta", className: "bg-muted text-muted-foreground" },
-  IN_PROGRESS: { label: "Em andamento", className: "bg-status-progress/10 text-status-progress" },
-  WAITING_PARTS: { label: "Aguardando peças", className: "bg-status-waiting/10 text-status-waiting" },
-  WAITING_CLIENT: { label: "Aguardando cliente", className: "bg-status-client/10 text-status-client" },
-  DONE: { label: "Concluída", className: "bg-status-done/10 text-status-done" },
-  CANCELLED: { label: "Cancelada", className: "bg-destructive/10 text-destructive" },
+export const statusClasses: Record<ServiceOrderStatus, string> = {
+  OPEN: "bg-status-open/10 text-status-open",
+  IN_PROGRESS: "bg-status-progress/10 text-status-progress",
+  WAITING_PARTS: "bg-status-waiting/10 text-status-waiting",
+  WAITING_CLIENT: "bg-status-client/10 text-status-client",
+  DONE: "bg-status-done/10 text-status-done",
+  CANCELLED: "bg-status-cancelled/10 text-status-cancelled",
 };
 
-function formatCurrency(value: number | string | undefined): string {
-  const num = typeof value === "string" ? parseFloat(value) : value || 0;
-  return Number.isNaN(num)
-    ? "R$ 0,00"
-    : num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+interface ServiceItemRow {
+  key: number;
+  service_id: string;
+  service_name: string;
+  price: string;
+  discount: string;
 }
 
+interface ProductItemRow {
+  key: number;
+  product_id: string;
+  quantity: string;
+  price: string;
+  discount: string;
+}
+
+let rowKey = 0;
+
 export default function ServiceOrdersPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [clients, setClients] = useState<Client[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
 
-  // Modals state
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [serviceModalOpen, setServiceModalOpen] = useState(false);
-  const [productModalOpen, setProductModalOpen] = useState(false);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<ServiceOrder | null>(null);
+  const [clientId, setClientId] = useState("");
+  const [vehicleId, setVehicleId] = useState("");
+  const [mechanicId, setMechanicId] = useState("");
+  const [description, setDescription] = useState("");
+  const [observations, setObservations] = useState("");
+  const [serviceRows, setServiceRows] = useState<ServiceItemRow[]>([]);
+  const [productRows, setProductRows] = useState<ProductItemRow[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const [creating, setCreating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Main OS Form
-  const [form, setForm] = useState({
-    client_id: "",
-    vehicle_id: "",
-    mechanic_id: "",
-    description: "",
-    observations: "",
-  });
-
-  const [formServices, setFormServices] = useState<FormServiceItem[]>([]);
-  const [formProducts, setFormProducts] = useState<FormProductItem[]>([]);
-
-  // Sub-modal: Service Form
-  const [serviceForm, setServiceForm] = useState({
-    service_name: "",
-    price: "",
-  });
-  const [serviceError, setServiceError] = useState("");
-
-  // Sub-modal: Product Form
-  const [productSearch, setProductSearch] = useState("");
-  const [productForm, setProductForm] = useState({
-    product_id: "",
-    quantity: "1",
-    price: "",
-  });
-  const [productError, setProductError] = useState("");
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  async function loadData() {
+  const load = useCallback(async (query?: string, status?: string) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const [oData, cData, vData, eData, pData] = await Promise.all([
-        getServiceOrders(),
-        getClients(),
-        getVehicles(),
-        getEmployees(),
-        getProducts(),
-      ]);
-      setOrders(oData);
-      setClients(cData);
-      setVehicles(vData);
-      setEmployees(eData);
-      setProducts(pData);
+      setOrders(await getServiceOrders(query, status));
     } catch (error) {
-      console.error("Erro ao carregar ordens de serviço:", error);
+      toast.error(extractApiErrorMessage(error, "Não foi possível carregar as ordens de serviço."));
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (searchRef.current) clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => void load(search, statusFilter), 300);
+    return () => {
+      if (searchRef.current) clearTimeout(searchRef.current);
+    };
+  }, [search, statusFilter, load]);
+
+  useEffect(() => {
+    void Promise.all([getClients(), getVehicles(), getEmployees(), getServices(), getProducts()])
+      .then(([clientList, vehicleList, employeeList, serviceList, productList]) => {
+        setClients(clientList);
+        setVehicles(vehicleList);
+        setEmployees(employeeList);
+        setServices(serviceList);
+        setProducts(productList);
+      })
+      .catch(() => toast.error("Não foi possível carregar os dados de apoio."));
+  }, []);
+
+  useEffect(() => {
+    if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
+      openCreate();
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const clientVehicles = useMemo(
+    () => vehicles.filter((vehicle) => vehicle.owner.id === clientId),
+    [vehicles, clientId],
+  );
+
+  const servicesTotal = serviceRows.reduce(
+    (sum, row) => sum + (parseDecimalValue(row.price) - parseDecimalValue(row.discount)),
+    0,
+  );
+  const productsTotal = productRows.reduce(
+    (sum, row) => sum + (parseDecimalValue(row.price) * (Number(row.quantity) || 1) - parseDecimalValue(row.discount)),
+    0,
+  );
+
+  function openCreate() {
+    setClientId("");
+    setVehicleId("");
+    setMechanicId("");
+    setDescription("");
+    setObservations("");
+    setServiceRows([]);
+    setProductRows([]);
+    setFieldErrors({});
+    setDialogOpen(true);
   }
 
-  const filteredOrders = useMemo(() => {
-    const term = search.toLowerCase();
-    return orders.filter(
-      (o) =>
-        o.client?.name?.toLowerCase().includes(term) ||
-        o.vehicle?.license_plate?.toLowerCase().includes(term) ||
-        o.vehicle?.model?.toLowerCase().includes(term) ||
-        o.mechanic?.name?.toLowerCase().includes(term) ||
-        o.status.toLowerCase().includes(term)
-    );
-  }, [orders, search]);
-
-  const filteredVehicles = useMemo(() => {
-    if (!form.client_id) return [];
-    return vehicles.filter((v) => v.owner?.id === form.client_id);
-  }, [vehicles, form.client_id]);
-
-  const filteredProductsList = useMemo(() => {
-    const term = productSearch.toLowerCase();
-    if (!term) return products;
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(term) ||
-        p.reference_code?.toLowerCase().includes(term) ||
-        p.brand?.toLowerCase().includes(term)
-    );
-  }, [products, productSearch]);
-
-  const selectedProductDetail = useMemo(() => {
-    return products.find((p) => p.id === productForm.product_id);
-  }, [products, productForm.product_id]);
-
-  // Calculations
-  const servicesTotal = useMemo(() => {
-    return formServices.reduce((acc, curr) => acc + curr.price, 0);
-  }, [formServices]);
-
-  const productsTotal = useMemo(() => {
-    return formProducts.reduce((acc, curr) => acc + curr.subtotal, 0);
-  }, [formProducts]);
-
-  const grandTotal = useMemo(() => {
-    return servicesTotal + productsTotal;
-  }, [servicesTotal, productsTotal]);
-
-  // Handlers for Services
-  function handleAddService() {
-    setServiceError("");
-    if (!serviceForm.service_name.trim()) {
-      setServiceError("Informe o nome do serviço prestado.");
-      return;
-    }
-    const price = parseFloat(serviceForm.price);
-    if (Number.isNaN(price) || price < 0) {
-      setServiceError("Informe um valor válido cobrado pelo mecânico.");
-      return;
-    }
-
-    setFormServices((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        service_name: serviceForm.service_name.trim(),
-        price,
-      },
+  function addServiceRow() {
+    setServiceRows((rows) => [
+      ...rows,
+      { key: ++rowKey, service_id: "", service_name: "", price: "", discount: "" },
     ]);
-
-    setServiceForm({ service_name: "", price: "" });
-    setServiceModalOpen(false);
   }
 
-  function handleRemoveService(id: string) {
-    setFormServices((prev) => prev.filter((item) => item.id !== id));
-  }
-
-  // Handlers for Products
-  function handleSelectProduct(product: Product) {
-    setProductForm({
-      product_id: product.id,
-      quantity: "1",
-      price: product.sale_price || "0",
-    });
-  }
-
-  function handleAddProduct() {
-    setProductError("");
-    if (!productForm.product_id) {
-      setProductError("Selecione um produto da lista.");
-      return;
-    }
-
-    const qty = parseInt(productForm.quantity, 10);
-    if (Number.isNaN(qty) || qty <= 0) {
-      setProductError("Informe uma quantidade válida maior que zero.");
-      return;
-    }
-
-    const price = parseFloat(productForm.price);
-    if (Number.isNaN(price) || price < 0) {
-      setProductError("Informe um preço unitário válido.");
-      return;
-    }
-
-    const product = products.find((p) => p.id === productForm.product_id);
-    if (!product) return;
-
-    setFormProducts((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        product_id: product.id,
-        product_name: product.name,
-        reference_code: product.reference_code,
-        quantity: qty,
-        price,
-        subtotal: qty * price,
-      },
+  function addProductRow() {
+    setProductRows((rows) => [
+      ...rows,
+      { key: ++rowKey, product_id: "", quantity: "1", price: "", discount: "" },
     ]);
-
-    setProductForm({ product_id: "", quantity: "1", price: "" });
-    setProductSearch("");
-    setProductModalOpen(false);
   }
 
-  function handleRemoveProduct(id: string) {
-    setFormProducts((prev) => prev.filter((item) => item.id !== id));
+  function handleProductSelect(key: number, productId: string) {
+    const product = products.find((item) => item.id === productId);
+    setProductRows((rows) =>
+      rows.map((row) =>
+        row.key === key
+          ? { ...row, product_id: productId, price: product ? product.sale_price : "" }
+          : row,
+      ),
+    );
   }
 
-  // Create OS
-  async function handleCreate() {
-    setErrorMessage(null);
-    if (!form.client_id) {
-      setErrorMessage("Por favor, selecione um cliente.");
-      return;
-    }
-    if (!form.vehicle_id) {
-      setErrorMessage("Por favor, selecione um veículo.");
-      return;
-    }
+  function handleServiceSelect(key: number, serviceId: string) {
+    const service = services.find((item) => item.id === serviceId);
+    setServiceRows((rows) =>
+      rows.map((row) =>
+        row.key === key
+          ? {
+              ...row,
+              service_id: serviceId,
+              service_name: "",
+              price: service ? service.sale_price : row.price,
+            }
+          : row,
+      ),
+    );
+  }
 
+  function validate(): boolean {
+    const errors: Record<string, string> = {};
+    if (!clientId) errors.client = "Selecione o cliente.";
+    if (!vehicleId) errors.vehicle = "Selecione o veículo.";
+    for (const row of serviceRows) {
+      if (!row.service_id && !row.service_name.trim()) {
+        errors.services = "Informe o serviço (catálogo ou nome livre) em todas as linhas.";
+      }
+    }
+    for (const row of productRows) {
+      if (!row.product_id) {
+        errors.products = "Selecione o produto em todas as linhas.";
+      }
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  async function handleSubmit() {
+    if (!validate()) return;
+
+    setSaving(true);
     try {
-      setCreating(true);
-      await createServiceOrder({
-        client_id: form.client_id,
-        vehicle_id: form.vehicle_id,
-        mechanic_id: form.mechanic_id || null,
-        description: form.description || undefined,
-        observations: form.observations || undefined,
-        total_price: grandTotal,
-        services: formServices.map((s) => ({
-          service_name: s.service_name,
-          price: s.price,
+      const created = await createServiceOrder({
+        client_id: clientId,
+        vehicle_id: vehicleId,
+        mechanic_id: mechanicId || null,
+        description: description.trim() || undefined,
+        observations: observations.trim() || undefined,
+        services: serviceRows.map((row) => ({
+          service_id: row.service_id || null,
+          service_name: row.service_id ? undefined : row.service_name.trim(),
+          price: parseDecimalValue(row.price).toFixed(2),
+          discount: parseDecimalValue(row.discount).toFixed(2),
         })),
-        products: formProducts.map((p) => ({
-          product_id: p.product_id,
-          quantity: p.quantity,
-          price: p.price,
+        products: productRows.map((row) => ({
+          product_id: row.product_id,
+          quantity: Number(row.quantity) || 1,
+          price: parseDecimalValue(row.price).toFixed(2),
+          discount: parseDecimalValue(row.discount).toFixed(2),
         })),
       });
-
+      toast.success(`OS #${created.number} criada com sucesso.`);
       setDialogOpen(false);
-      setForm({
-        client_id: "",
-        vehicle_id: "",
-        mechanic_id: "",
-        description: "",
-        observations: "",
-      });
-      setFormServices([]);
-      setFormProducts([]);
-      await loadData();
-    } catch (error: unknown) {
-      console.error("Erro ao criar ordem de serviço:", error);
-      setErrorMessage(
-        "Erro ao criar ordem de serviço. Verifique todos os campos obrigatórios."
-      );
+      await load(search, statusFilter);
+    } catch (error) {
+      setFieldErrors(extractFieldErrors(error));
+      toast.error(extractApiErrorMessage(error, "Não foi possível criar a ordem de serviço."));
     } finally {
-      setCreating(false);
+      setSaving(false);
     }
-  }
-
-  function formatDate(dateStr: string) {
-    return new Date(dateStr).toLocaleDateString("pt-BR");
   }
 
   return (
-    <>
-      <PageLayout
-        title="Ordens de Serviço"
-        searchPlaceholder="Buscar por cliente, placa, mecânico ou status..."
-        searchValue={search}
-        onSearchChange={setSearch}
-        onAdd={() => {
-          setErrorMessage(null);
-          setDialogOpen(true);
-        }}
-        addLabel="Nova OS"
-      >
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <IconLoader2 size={24} className="animate-spin text-primary" />
-          </div>
-        ) : (
-          <Table variant="card">
-            <TableHeader>
-              <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Veículo</TableHead>
-                <TableHead>Mecânico</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Valor Total</TableHead>
-                <TableHead>Data</TableHead>
-                <TableHead className="w-[80px] text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
-                    Nenhuma ordem de serviço encontrada.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredOrders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell className="font-mono text-xs font-semibold text-primary">
-                      #{order.id.slice(0, 8)}
-                    </TableCell>
-                    <TableCell className="font-medium">{order.client?.name || "—"}</TableCell>
-                    <TableCell>
-                      {order.vehicle?.license_plate} — {order.vehicle?.brand} {order.vehicle?.model}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {order.mechanic?.name || <span className="italic">Não atribuído</span>}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                          statusConfig[order.status]?.className || ""
-                        }`}
-                      >
-                        {statusConfig[order.status]?.label || order.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-semibold">
-                      {formatCurrency(order.total_price)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(order.created_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedOrder(order);
-                          setDetailModalOpen(true);
-                        }}
-                        className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        title="Ver detalhes"
-                      >
-                        <IconEye size={18} />
-                      </button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
-      </PageLayout>
+    <PageLayout
+      title="Ordens de Serviço"
+      searchPlaceholder="Buscar por número, cliente ou placa..."
+      searchValue={search}
+      onSearchChange={setSearch}
+      onAdd={openCreate}
+      addLabel="Nova OS"
+    >
+      <div className="mb-4">
+        <FormSelect
+          label="Filtrar por status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="">Todos os status</option>
+          {(Object.keys(STATUS_LABELS) as ServiceOrderStatus[]).map((status) => (
+            <option key={status} value={status}>
+              {STATUS_LABELS[status]}
+            </option>
+          ))}
+        </FormSelect>
+      </div>
 
-      {/* Modal Principal: Nova Ordem de Serviço */}
+      <div className="rounded-2xl border border-border bg-surface">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
+            <IconLoader2 size={18} className="animate-spin" /> Carregando ordens de serviço...
+          </div>
+        ) : orders.length === 0 ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">
+            {search || statusFilter
+              ? "Nenhuma ordem de serviço encontrada para os filtros."
+              : "Nenhuma ordem de serviço registrada ainda."}
+          </p>
+        ) : (
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                  <th className="px-4 py-3">OS</th>
+                  <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3 max-md:hidden">Veículo</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 max-lg:hidden">Data</th>
+                  <th className="px-4 py-3 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr
+                    key={order.id}
+                    onClick={() => navigate(`/os/${order.id}`)}
+                    className="cursor-pointer border-b border-border/50 last:border-0 hover:bg-foreground/[0.02]"
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-medium">#{order.number}</p>
+                    </td>
+                    <td className="px-4 py-3">{order.client.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-md:hidden">
+                      {order.vehicle.license_plate ?? order.vehicle.model}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClasses[order.status]}`}>
+                        {STATUS_LABELS[order.status]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{formatDate(order.created_at)}</td>
+                    <td className="px-4 py-3 text-right font-medium">{formatCurrency(order.total_price)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="px-4 py-3 text-xs text-muted-foreground">
+              {orders.length} ordem(ns) de serviço exibida(s)
+            </p>
+          </>
+        )}
+      </div>
+
       <Dialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         title="Nova Ordem de Serviço"
-        onSubmit={handleCreate}
-        submitLabel="Criar Ordem de Serviço"
-        loading={creating}
+        onSubmit={() => void handleSubmit()}
+        submitLabel="Criar OS"
+        loading={saving}
         maxWidth="max-w-3xl"
       >
-        <div className="space-y-6">
-          {errorMessage && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-              <IconAlertCircle size={18} />
-              <span>{errorMessage}</span>
-            </div>
-          )}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormSelect
+            label="Cliente"
+            value={clientId}
+            onChange={(e) => {
+              setClientId(e.target.value);
+              setVehicleId("");
+            }}
+            error={fieldErrors.client ?? fieldErrors.client_id}
+          >
+            <option value="">Selecione o cliente...</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </FormSelect>
 
-          {/* Seção 1: Dados Básicos */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Cliente *</label>
-              <select
-                value={form.client_id}
-                onChange={(e) =>
-                  setForm({ ...form, client_id: e.target.value, vehicle_id: "" })
-                }
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
-              >
-                <option value="">Selecione um cliente</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.document || "S/ Doc"})
-                  </option>
-                ))}
-              </select>
-            </div>
+          <FormSelect
+            label="Veículo"
+            value={vehicleId}
+            onChange={(e) => setVehicleId(e.target.value)}
+            error={fieldErrors.vehicle ?? fieldErrors.vehicle_id}
+            disabled={!clientId}
+          >
+            <option value="">{clientId ? "Selecione o veículo..." : "Selecione o cliente primeiro"}</option>
+            {clientVehicles.map((vehicle) => (
+              <option key={vehicle.id} value={vehicle.id}>
+                {vehicle.license_plate ?? "Sem placa"} — {vehicle.brand} {vehicle.model}
+              </option>
+            ))}
+          </FormSelect>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium">Veículo *</label>
-              <select
-                value={form.vehicle_id}
-                onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })}
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none disabled:opacity-50"
-                disabled={!form.client_id}
-              >
-                <option value="">
-                  {form.client_id ? "Selecione um veículo" : "Selecione um cliente primeiro"}
-                </option>
-                {filteredVehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.license_plate} — {v.brand} {v.model}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <FormSelect
+            label="Mecânico responsável"
+            optional
+            value={mechanicId}
+            onChange={(e) => setMechanicId(e.target.value)}
+          >
+            <option value="">Nenhum</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.name}
+              </option>
+            ))}
+          </FormSelect>
 
-            {/* Mecânico Dropdown */}
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-sm font-medium">
-                Mecânico Responsável
-              </label>
-              <select
-                value={form.mechanic_id}
-                onChange={(e) => setForm({ ...form, mechanic_id: e.target.value })}
-                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
-              >
-                <option value="">Selecione um mecânico (opcional)</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name} {emp.phone ? `(${emp.phone})` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Seção 2: Serviços Prestados */}
-          <div className="rounded-xl border border-border bg-surface/50 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <IconTools size={18} className="text-primary" />
-                <h3 className="font-semibold text-sm">Serviços Prestados</h3>
-                <span className="text-xs text-muted-foreground">({formServices.length})</span>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 gap-1.5 text-xs"
-                onClick={() => {
-                  setServiceError("");
-                  setServiceModalOpen(true);
-                }}
-              >
-                <IconPlus size={14} />
-                Adicionar Serviço
-              </Button>
-            </div>
-
-            {formServices.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic py-2 text-center">
-                Nenhum serviço adicionado. Clique no botão acima para adicionar.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {formServices.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <p className="font-medium text-xs md:text-sm">{item.service_name}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold text-xs md:text-sm text-primary">
-                        {formatCurrency(item.price)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveService(item.id)}
-                        className="text-muted-foreground transition-colors hover:text-destructive"
-                        title="Remover serviço"
-                      >
-                        <IconTrash size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Seção 3: Produtos e Peças */}
-          <div className="rounded-xl border border-border bg-surface/50 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <IconPackage size={18} className="text-primary" />
-                <h3 className="font-semibold text-sm">Peças & Produtos</h3>
-                <span className="text-xs text-muted-foreground">({formProducts.length})</span>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 gap-1.5 text-xs"
-                onClick={() => {
-                  setProductError("");
-                  setProductModalOpen(true);
-                }}
-              >
-                <IconPlus size={14} />
-                Adicionar Produto
-              </Button>
-            </div>
-
-            {formProducts.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic py-2 text-center">
-                Nenhuma peça adicionada. Clique no botão acima para adicionar.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {formProducts.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <p className="font-medium text-xs md:text-sm">{item.product_name}</p>
-                      {item.reference_code && (
-                        <p className="text-[11px] text-muted-foreground">
-                          Ref: {item.reference_code}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">
-                        {item.quantity}x {formatCurrency(item.price)}
-                      </span>
-                      <span className="font-semibold text-xs md:text-sm text-primary">
-                        {formatCurrency(item.subtotal)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveProduct(item.id)}
-                        className="text-muted-foreground transition-colors hover:text-destructive"
-                        title="Remover peça"
-                      >
-                        <IconTrash size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Seção 4: Descrição e Observações */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Descrição do serviço</label>
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Descreva o serviço solicitado pelo cliente..."
-                rows={2}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium">Observações internas</label>
-              <textarea
-                value={form.observations}
-                onChange={(e) => setForm({ ...form, observations: e.target.value })}
-                placeholder="Observações da equipe ou peças em falta..."
-                rows={2}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-              />
-            </div>
-          </div>
-
-          {/* Seção 5: Resumo Financeiro da OS */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
-            <div className="flex gap-4 text-xs text-muted-foreground">
-              <span>Serviços: <strong className="text-foreground">{formatCurrency(servicesTotal)}</strong></span>
-              <span>Peças: <strong className="text-foreground">{formatCurrency(productsTotal)}</strong></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-muted-foreground">Total Estimado:</span>
-              <span className="text-xl font-bold text-primary">
-                {formatCurrency(grandTotal)}
-              </span>
-            </div>
-          </div>
+          <FormField
+            label="Descrição"
+            optional
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Descrição do serviço solicitado"
+          />
         </div>
-      </Dialog>
 
-      {/* Sub-modal: Escrever Serviço Prestado e Valor Cobrado pelo Mecânico */}
-      <Dialog
-        open={serviceModalOpen}
-        onClose={() => setServiceModalOpen(false)}
-        title="Adicionar Serviço Prestado"
-        onSubmit={handleAddService}
-        submitLabel="Inserir Serviço"
-        zIndex="z-[60]"
-        maxWidth="max-w-md"
-      >
-        <div className="space-y-4">
-          {serviceError && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
-              <IconAlertCircle size={16} />
-              <span>{serviceError}</span>
-            </div>
-          )}
-
-          <div>
-            <label className="mb-1 block text-sm font-medium">Serviço Prestado *</label>
-            <Input
-              placeholder="Ex: Troca de pastilhas de freio dianteiras"
-              value={serviceForm.service_name}
-              onChange={(e) => setServiceForm({ ...serviceForm, service_name: e.target.value })}
-              autoFocus
-            />
+        <div className="mt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-muted-foreground">Serviços</h3>
+            <Button type="button" variant="outline" size="sm" onClick={addServiceRow}>
+              <IconPlus size={14} /> Adicionar serviço
+            </Button>
           </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Valor Cobrado pelo Mecânico (R$) *
-            </label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0,00"
-              value={serviceForm.price}
-              onChange={(e) => setServiceForm({ ...serviceForm, price: e.target.value })}
-            />
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Informe o valor da mão de obra correspondente a este serviço.
-            </p>
-          </div>
-        </div>
-      </Dialog>
-
-      {/* Sub-modal: Procurar e Selecionar Produto */}
-      <Dialog
-        open={productModalOpen}
-        onClose={() => setProductModalOpen(false)}
-        title="Procurar e Selecionar Produto"
-        onSubmit={handleAddProduct}
-        submitLabel="Inserir Peça"
-        zIndex="z-[60]"
-        maxWidth="max-w-lg"
-      >
-        <div className="space-y-4">
-          {productError && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
-              <IconAlertCircle size={16} />
-              <span>{productError}</span>
-            </div>
-          )}
-
-          {/* Busca de Produto */}
-          <div>
-            <label className="mb-1 block text-sm font-medium">Buscar Peça / Produto</label>
-            <div className="relative">
-              <IconSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Pesquisar por nome, marca ou código..."
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-          </div>
-
-          {/* Lista de Seleção de Produtos */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">
-              Selecione na lista abaixo ({filteredProductsList.length} encontrados):
-            </label>
-            <div className="max-h-40 overflow-y-auto rounded-lg border border-border divide-y divide-border bg-background">
-              {filteredProductsList.length === 0 ? (
-                <div className="p-3 text-center text-xs text-muted-foreground">
-                  Nenhum produto encontrado.
-                </div>
-              ) : (
-                filteredProductsList.map((prod) => {
-                  const isSelected = productForm.product_id === prod.id;
-                  return (
+          {serviceRows.length === 0 ? (
+            <p className="mb-2 text-xs text-muted-foreground">Nenhum serviço adicionado.</p>
+          ) : (
+            <div className="space-y-3">
+              {serviceRows.map((row) => (
+                <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
+                  <div className="sm:col-span-4">
+                    <FormSelect
+                      label="Catálogo"
+                      value={row.service_id}
+                      onChange={(e) => handleServiceSelect(row.key, e.target.value)}
+                    >
+                      <option value="">Serviço livre...</option>
+                      {services.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  </div>
+                  {!row.service_id && (
+                    <div className="sm:col-span-4">
+                      <FormField
+                        label="Nome do serviço"
+                        value={row.service_name}
+                        onChange={(e) =>
+                          setServiceRows((rows) =>
+                            rows.map((item) =>
+                              item.key === row.key ? { ...item, service_name: e.target.value } : item,
+                            ),
+                          )
+                        }
+                        placeholder="Ex: Troca de óleo"
+                      />
+                    </div>
+                  )}
+                  <div className="sm:col-span-2">
+                    <FormField
+                      label="Preço (R$)"
+                      value={row.price}
+                      inputMode="decimal"
+                      onChange={(e) =>
+                        setServiceRows((rows) =>
+                          rows.map((item) =>
+                            item.key === row.key ? { ...item, price: e.target.value } : item,
+                          ),
+                        )
+                      }
+                      placeholder="0,00"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <FormField
+                      label="Desconto (R$)"
+                      value={row.discount}
+                      inputMode="decimal"
+                      onChange={(e) =>
+                        setServiceRows((rows) =>
+                          rows.map((item) =>
+                            item.key === row.key ? { ...item, discount: e.target.value } : item,
+                          ),
+                        )
+                      }
+                      placeholder="0,00"
+                    />
+                  </div>
+                  <div className="flex items-end sm:col-span-1">
                     <button
                       type="button"
-                      key={prod.id}
-                      onClick={() => handleSelectProduct(prod)}
-                      className={`w-full flex items-center justify-between p-2.5 text-left text-xs transition-colors ${
-                        isSelected
-                          ? "bg-primary/10 text-primary font-medium"
-                          : "hover:bg-muted text-foreground"
-                      }`}
+                      onClick={() => setServiceRows((rows) => rows.filter((item) => item.key !== row.key))}
+                      aria-label="Remover serviço"
+                      className="mb-1 rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
-                      <div>
-                        <p className="font-semibold">{prod.name}</p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {prod.brand || "Genérico"} {prod.reference_code ? `| Ref: ${prod.reference_code}` : ""}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-primary">{formatCurrency(prod.sale_price)}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          Estoque: {prod.stock_quantity} un.
-                        </p>
-                      </div>
+                      <IconTrash size={16} />
                     </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Quantidade e Preço do Produto Selecionado */}
-          {selectedProductDetail && (
-            <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-surface p-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium">Quantidade *</label>
-                <Input
-                  type="number"
-                  min="1"
-                  max={selectedProductDetail.stock_quantity || 9999}
-                  value={productForm.quantity}
-                  onChange={(e) => setProductForm({ ...productForm, quantity: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-medium">Preço Unitário (R$) *</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={productForm.price}
-                  onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                />
-              </div>
-
-              <div className="col-span-2 flex justify-between items-center pt-2 text-xs border-t border-border/50">
-                <span className="text-muted-foreground">Subtotal deste item:</span>
-                <span className="font-bold text-sm text-primary">
-                  {formatCurrency(
-                    (parseInt(productForm.quantity, 10) || 0) * (parseFloat(productForm.price) || 0)
-                  )}
-                </span>
-              </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
+          {fieldErrors.services && <p className="mt-1 text-xs text-destructive">{fieldErrors.services}</p>}
+        </div>
+
+        <div className="mt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-muted-foreground">Peças</h3>
+            <Button type="button" variant="outline" size="sm" onClick={addProductRow}>
+              <IconPlus size={14} /> Adicionar peça
+            </Button>
+          </div>
+
+          {productRows.length === 0 ? (
+            <p className="mb-2 text-xs text-muted-foreground">Nenhuma peça adicionada.</p>
+          ) : (
+            <div className="space-y-3">
+              {productRows.map((row) => {
+                const product = products.find((item) => item.id === row.product_id);
+                return (
+                  <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
+                    <div className="sm:col-span-4">
+                      <FormSelect
+                        label="Produto"
+                        value={row.product_id}
+                        onChange={(e) => handleProductSelect(row.key, e.target.value)}
+                      >
+                        <option value="">Selecione...</option>
+                        {products.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.name} (est. {item.stock_quantity})
+                          </option>
+                        ))}
+                      </FormSelect>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <FormField
+                        label="Qtd."
+                        type="number"
+                        min={1}
+                        value={row.quantity}
+                        onChange={(e) =>
+                          setProductRows((rows) =>
+                            rows.map((item) =>
+                              item.key === row.key ? { ...item, quantity: e.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <FormField
+                        label="Preço (R$)"
+                        value={row.price}
+                        inputMode="decimal"
+                        onChange={(e) =>
+                          setProductRows((rows) =>
+                            rows.map((item) =>
+                              item.key === row.key ? { ...item, price: e.target.value } : item,
+                            ),
+                          )
+                        }
+                        placeholder="0,00"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <FormField
+                        label="Desconto (R$)"
+                        value={row.discount}
+                        inputMode="decimal"
+                        onChange={(e) =>
+                          setProductRows((rows) =>
+                            rows.map((item) =>
+                              item.key === row.key ? { ...item, discount: e.target.value } : item,
+                            ),
+                          )
+                        }
+                        placeholder="0,00"
+                      />
+                    </div>
+                    <div className="flex items-end sm:col-span-1">
+                      <button
+                        type="button"
+                        onClick={() => setProductRows((rows) => rows.filter((item) => item.key !== row.key))}
+                        aria-label="Remover peça"
+                        className="mb-1 rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <IconTrash size={16} />
+                      </button>
+                    </div>
+                    {product && (
+                      <p className="text-xs text-muted-foreground sm:col-span-12">
+                        Estoque atual: {product.stock_quantity} un.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {fieldErrors.products && <p className="mt-1 text-xs text-destructive">{fieldErrors.products}</p>}
+        </div>
+
+        <div className="mt-6">
+          <FormTextarea
+            label="Observações internas"
+            optional
+            value={observations}
+            onChange={(e) => setObservations(e.target.value)}
+            placeholder="Observações internas sobre o serviço"
+          />
+        </div>
+
+        <div className="mt-6 rounded-lg bg-foreground/5 p-4 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Serviços</span>
+            <span>{formatCurrency(servicesTotal)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Peças</span>
+            <span>{formatCurrency(productsTotal)}</span>
+          </div>
+          <div className="mt-2 flex justify-between border-t border-border pt-2 font-semibold">
+            <span>Total</span>
+            <span>{formatCurrency(servicesTotal + productsTotal)}</span>
+          </div>
         </div>
       </Dialog>
-
-      {/* Modal de Visualização de Detalhes da Ordem de Serviço */}
-      <Dialog
-        open={detailModalOpen}
-        onClose={() => setDetailModalOpen(false)}
-        title={`Detalhes da Ordem de Serviço #${selectedOrder?.id.slice(0, 8)}`}
-        hideSubmit
-        maxWidth="max-w-2xl"
-      >
-        {selectedOrder && (
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 rounded-xl border border-border bg-surface p-4">
-              <div>
-                <span className="text-xs text-muted-foreground block">Cliente</span>
-                <p className="font-semibold">{selectedOrder.client?.name}</p>
-                <p className="text-xs text-muted-foreground">{selectedOrder.client?.document}</p>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground block">Veículo</span>
-                <p className="font-semibold">{selectedOrder.vehicle?.license_plate}</p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedOrder.vehicle?.brand} {selectedOrder.vehicle?.model}
-                </p>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground block">Mecânico</span>
-                <p className="font-semibold">
-                  {selectedOrder.mechanic?.name || <span className="italic">Não atribuído</span>}
-                </p>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground block">Status</span>
-                <span
-                  className={`inline-block mt-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                    statusConfig[selectedOrder.status]?.className || ""
-                  }`}
-                >
-                  {statusConfig[selectedOrder.status]?.label || selectedOrder.status}
-                </span>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground block">Criado em</span>
-                <p className="font-medium text-xs mt-1">{formatDate(selectedOrder.created_at)}</p>
-              </div>
-
-              <div>
-                <span className="text-xs text-muted-foreground block">Valor Total</span>
-                <p className="font-bold text-base text-primary">
-                  {formatCurrency(selectedOrder.total_price)}
-                </p>
-              </div>
-            </div>
-
-            {selectedOrder.description && (
-              <div>
-                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                  Descrição do Serviço
-                </h4>
-                <p className="rounded-lg border border-border bg-background p-3 text-xs leading-relaxed">
-                  {selectedOrder.description}
-                </p>
-              </div>
-            )}
-
-            {selectedOrder.observations && (
-              <div>
-                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                  Observações Internas
-                </h4>
-                <p className="rounded-lg border border-border bg-background p-3 text-xs leading-relaxed">
-                  {selectedOrder.observations}
-                </p>
-              </div>
-            )}
-
-            {/* Serviços da OS */}
-            {selectedOrder.services && selectedOrder.services.length > 0 && (
-              <div>
-                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <IconTools size={14} className="text-primary" />
-                  Serviços Realizados
-                </h4>
-                <div className="space-y-1.5">
-                  {selectedOrder.services.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-xs"
-                    >
-                      <span>{item.service?.name || item.service_name || "Serviço"}</span>
-                      <span className="font-semibold text-primary">
-                        {formatCurrency(item.total_price || item.price)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Produtos da OS */}
-            {selectedOrder.products && selectedOrder.products.length > 0 && (
-              <div>
-                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <IconPackage size={14} className="text-primary" />
-                  Peças & Materiais Utilizados
-                </h4>
-                <div className="space-y-1.5">
-                  {selectedOrder.products.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 text-xs"
-                    >
-                      <span>
-                        {item.product?.name} ({item.quantity}x)
-                      </span>
-                      <span className="font-semibold text-primary">
-                        {formatCurrency(item.total_price || item.price)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </Dialog>
-    </>
+    </PageLayout>
   );
 }

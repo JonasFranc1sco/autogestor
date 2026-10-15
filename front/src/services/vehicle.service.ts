@@ -6,31 +6,33 @@ export interface Vehicle {
   owner: {
     id: string;
     name: string;
-    document: string;
+    document: string | null;
   };
-  license_plate: string;
+  license_plate: string | null;
   year: number | null;
   brand: string;
   model: string;
-  color: string;
-  chassis: string;
+  color: string | null;
+  chassis: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface VehicleCreateData {
   owner_id: string;
-  license_plate: string;
-  year?: number;
+  license_plate?: string | null;
+  year?: number | null;
   brand: string;
   model: string;
-  color: string;
-  chassis: string;
+  color?: string | null;
+  chassis?: string | null;
 }
 
-export async function getVehicles(): Promise<Vehicle[]> {
+export type VehicleUpdateData = Partial<VehicleCreateData>;
+
+export async function getVehicles(search?: string): Promise<Vehicle[]> {
   const response = await api.get<Paginated<Vehicle>>("/api/vehicles/", {
-    params: { page_size: LIST_PAGE_SIZE },
+    params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
   });
   return response.data.results;
 }
@@ -38,4 +40,13 @@ export async function getVehicles(): Promise<Vehicle[]> {
 export async function createVehicle(data: VehicleCreateData): Promise<Vehicle> {
   const response = await api.post<Vehicle>("/api/vehicles/", data);
   return response.data;
+}
+
+export async function updateVehicle(id: string, data: VehicleUpdateData): Promise<Vehicle> {
+  const response = await api.patch<Vehicle>(`/api/vehicles/${id}/`, data);
+  return response.data;
+}
+
+export async function deleteVehicle(id: string): Promise<void> {
+  await api.delete(`/api/vehicles/${id}/`);
 }

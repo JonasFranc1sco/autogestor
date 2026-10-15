@@ -1,7 +1,6 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  IconBell,
-  IconUserCircle,
-  IconCalendar,
   IconUserPlus,
   IconClipboardPlus,
   IconCar,
@@ -9,202 +8,213 @@ import {
   IconClipboardList,
   IconUsers,
   IconPackage,
+  IconCash,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { getDashboard, type DashboardData } from "@/services/dashboard.service";
+import { formatCurrency, formatDate } from "@/lib/format";
+import {
+  STATUS_LABELS,
+  type ServiceOrderStatus,
+} from "@/services/serviceOrder.service";
+import { toast } from "sonner";
 
-const quickActions = [
-  { icon: IconUserPlus, title: "Novo Cliente", description: "Cadastrar cliente" },
-  { icon: IconClipboardPlus, title: "Nova OS", description: "Criar ordem de serviço" },
-  { icon: IconCar, title: "Novo Veículo", description: "Cadastrar veículo" },
-  { icon: IconBox, title: "Novo Produto", description: "Cadastrar produto" },
-];
-
-const summaryCards = [
-  { icon: IconClipboardList, value: "12", label: "Ordens de Serviço", highlight: "Abertas" },
-  { icon: IconCar, value: "8", label: "Veículos", highlight: "Em atendimento" },
-  { icon: IconUsers, value: "45", label: "Clientes", highlight: "Cadastrados" },
-  { icon: IconPackage, value: "128", label: "Produtos", highlight: "Em estoque" },
-];
-
-const recentOS = [
-  { id: "#00048", client: "João Silva", vehicle: "Honda Civic", status: "progress" as const },
-  { id: "#00047", client: "Maria Oliveira", vehicle: "Fiat Strada", status: "waiting" as const },
-  { id: "#00046", client: "Carlos Souza", vehicle: "Chevrolet Onix", status: "client" as const },
-  { id: "#00045", client: "Ana Pereira", vehicle: "Toyota Corolla", status: "done" as const },
-];
-
-const statusConfig = {
-  progress: { label: "Em andamento", className: "bg-status-progress/10 text-status-progress" },
-  waiting: { label: "Aguardando peças", className: "bg-status-waiting/10 text-status-waiting" },
-  client: { label: "Aguardando cliente", className: "bg-status-client/10 text-status-client" },
-  done: { label: "Concluída", className: "bg-status-done/10 text-status-done" },
+const statusClasses: Record<ServiceOrderStatus, string> = {
+  OPEN: "bg-status-open/10 text-status-open",
+  IN_PROGRESS: "bg-status-progress/10 text-status-progress",
+  WAITING_PARTS: "bg-status-waiting/10 text-status-waiting",
+  WAITING_CLIENT: "bg-status-client/10 text-status-client",
+  DONE: "bg-status-done/10 text-status-done",
+  CANCELLED: "bg-status-cancelled/10 text-status-cancelled",
 };
 
-function formatDate() {
-  const now = new Date();
-  const day = now.getDate();
-  const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-  return `${day} de ${months[now.getMonth()]}, ${now.getFullYear()}`;
-}
-
-function formatDay() {
-  return new Date().toLocaleDateString("pt-BR", { weekday: "long" });
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getDashboard()
+      .then((response) => {
+        if (active) setData(response);
+      })
+      .catch(() => {
+        toast.error("Não foi possível carregar o dashboard.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const quickActions = [
+    { icon: IconUserPlus, title: "Novo Cliente", to: "/clientes", action: "new" as const },
+    { icon: IconClipboardPlus, title: "Nova OS", to: "/os", action: "new" as const },
+    { icon: IconCar, title: "Novo Veículo", to: "/veiculos", action: "new" as const },
+    { icon: IconBox, title: "Novo Produto", to: "/produtos", action: "new" as const },
+  ];
+
+  const summaryCards = [
+    { icon: IconClipboardList, value: data?.counts.open_service_orders ?? 0, label: "OS Abertas", highlight: "Aguardando início" },
+    { icon: IconCar, value: data?.counts.in_progress_service_orders ?? 0, label: "Em Atendimento", highlight: "Em andamento" },
+    { icon: IconCash, value: formatCurrency(data?.revenue_this_month ?? 0), label: "Faturamento", highlight: "Este mês (concluídas)" },
+    { icon: IconUsers, value: data?.counts.clients ?? 0, label: "Clientes", highlight: `${data?.counts.vehicles ?? 0} veículos` },
+  ];
+
   return (
-    <main className="flex-1 overflow-y-auto p-6">
+    <main className="flex-1 overflow-y-auto p-4 sm:p-6">
       <header className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-4 text-lg font-semibold">
-          <span className="text-muted-foreground">Dashboard</span>
-        </div>
-
-        <div className="flex items-center gap-5 text-muted-foreground">
-          <button className="relative transition-colors hover:text-foreground">
-            <IconBell size={20} />
-            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary" />
-          </button>
-
-          <button className="transition-colors hover:text-foreground">
-            <IconUserCircle size={20} />
-          </button>
+        <div>
+          <h1 className="text-lg font-semibold text-muted-foreground">Dashboard</h1>
+          <p className="text-xl font-bold">
+            {greeting()}, {user?.full_name?.split(" ")[0] ?? "usuário"}!
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+          </p>
         </div>
       </header>
 
-      <section className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Olá, Vitor!</h1>
-          <p className="text-sm text-muted-foreground">Aqui está o resumo geral da sua oficina.</p>
-        </div>
-
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-5 py-3">
-          <IconCalendar size={18} className="text-muted-foreground" />
-          <div className="text-xs">
-            <p className="font-medium">{formatDate()}</p>
-            <p className="text-muted-foreground capitalize">{formatDay()}</p>
-          </div>
-        </div>
-      </section>
-
-      <h2 className="mb-4 text-base font-semibold">Ações rápidas</h2>
-      <div className="mb-8 grid grid-cols-4 gap-5">
-        {quickActions.map((action) => {
-          const Icon = action.icon;
-
-          return (
-            <button
-              key={action.title}
-              className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border bg-surface p-6 text-center transition-all hover:border-primary hover:-translate-y-0.5"
-            >
-              <div className="relative">
-                <Icon size={32} className="text-primary" />
-              </div>
-
-              <div>
-                <p className="text-sm font-semibold">{action.title}</p>
-                <p className="text-xs text-muted-foreground">{action.description}</p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      <h2 className="mb-4 text-base font-semibold">Resumo</h2>
-      <div className="mb-8 grid grid-cols-4 gap-5">
+      <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Resumo">
         {summaryCards.map((card) => {
           const Icon = card.icon;
-
           return (
-            <div
-              key={card.label}
-              className="flex items-center gap-4 rounded-2xl border border-border bg-surface p-5"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-primary/20 bg-primary/5">
-                <Icon size={20} className="text-primary" />
-              </div>
-
-              <div>
-                <p className="text-2xl font-bold leading-none">{card.value}</p>
-                <p className="text-xs text-muted-foreground">
-                  {card.label}{" "}
-                  <span className="text-primary">{card.highlight}</span>
-                </p>
+            <div key={card.label} className="rounded-2xl border border-border bg-surface p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{card.label}</p>
+                  <p className="mt-1 text-2xl font-bold">{loading ? "—" : card.value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{card.highlight}</p>
+                </div>
+                <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+                  <Icon size={20} stroke={1.8} />
+                </div>
               </div>
             </div>
           );
         })}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-[1.2fr_1fr] gap-5">
-        <div className="rounded-2xl border border-border bg-surface p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-base font-semibold">Ordens de Serviço recentes</h2>
-            <button className="rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:border-muted-foreground">
+      <section className="mb-8" aria-label="Ações rápidas">
+        <h2 className="mb-4 text-sm font-semibold text-muted-foreground">Ações Rápidas</h2>
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          {quickActions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <button
+                key={action.title}
+                type="button"
+                onClick={() => navigate(action.to, { state: { openCreate: true } })}
+                className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
+                <div className="rounded-xl bg-primary/10 p-2.5 text-primary">
+                  <Icon size={20} stroke={1.8} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{action.title}</p>
+                  <p className="text-xs text-muted-foreground">Cadastrar</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-semibold">Ordens de Serviço Recentes</h2>
+            <button
+              type="button"
+              onClick={() => navigate("/os")}
+              className="text-sm text-primary hover:underline"
+            >
               Ver todas
             </button>
           </div>
 
-          <div className="flex flex-col gap-3">
-            {recentOS.map((os) => (
-              <div
-                key={os.id}
-                className="grid grid-cols-[80px_1.5fr_1.5fr_120px] items-center border-b border-foreground/5 py-3 text-[13px] last:border-b-0"
-              >
-                <span className="text-muted-foreground">{os.id}</span>
-                <span>{os.client}</span>
-                <span>{os.vehicle}</span>
-                <span
-                  className={`justify-self-end rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusConfig[os.status].className}`}
-                >
-                  {statusConfig[os.status].label}
-                </span>
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : (data?.recent_service_orders.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma ordem de serviço registrada.</p>
+          ) : (
+            <ul className="space-y-3">
+              {data?.recent_service_orders.map((order) => (
+                <li key={order.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/os/${order.id}`)}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-foreground/5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        OS #{order.number} — {order.client_name}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {order.vehicle_plate ?? "Sem placa"} · {formatDate(order.created_at)}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClasses[order.status as ServiceOrderStatus] ?? ""}`}>
+                      {STATUS_LABELS[order.status as ServiceOrderStatus] ?? order.status}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-base font-semibold">Atividade recente</h2>
-            <button className="rounded-md border border-border px-3 py-1.5 text-xs transition-colors hover:border-muted-foreground">
-              Ver tudo
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 font-semibold">
+              <IconAlertTriangle size={18} className="text-status-waiting" />
+              Estoque Baixo
+            </h2>
+            <button
+              type="button"
+              onClick={() => navigate("/produtos")}
+              className="text-sm text-primary hover:underline"
+            >
+              Ver produtos
             </button>
           </div>
 
-          <div className="flex flex-col gap-4 text-sm">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 h-2 w-2 rounded-full bg-primary" />
-              <div>
-                <p>Nova OS <span className="font-semibold">#00048</span> criada</p>
-                <p className="text-xs text-muted-foreground">Há 2 horas</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 h-2 w-2 rounded-full bg-status-done" />
-              <div>
-                <p>OS <span className="font-semibold">#00045</span> concluída</p>
-                <p className="text-xs text-muted-foreground">Há 5 horas</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 h-2 w-2 rounded-full bg-status-client" />
-              <div>
-                <p>Novo cliente <span className="font-semibold">Carlos Souza</span> cadastrado</p>
-                <p className="text-xs text-muted-foreground">Ontem</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 h-2 w-2 rounded-full bg-status-waiting" />
-              <div>
-                <p>Produto <span className="font-semibold">Filtro de óleo</span> com estoque baixo</p>
-                <p className="text-xs text-muted-foreground">Ontem</p>
-              </div>
-            </div>
-          </div>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : (data?.low_stock_products.length ?? 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum produto com estoque baixo.</p>
+          ) : (
+            <ul className="space-y-3">
+              {data?.low_stock_products.map((product) => (
+                <li key={product.id} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="rounded-lg bg-status-waiting/10 p-2 text-status-waiting">
+                      <IconPackage size={16} stroke={1.8} />
+                    </div>
+                    <p className="truncate text-sm font-medium">{product.name}</p>
+                  </div>
+                  <p className="shrink-0 text-sm">
+                    <span className="font-semibold text-status-waiting">{product.stock_quantity}</span>
+                    <span className="text-muted-foreground"> / mín. {product.min_stock_quantity ?? 0}</span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      </div>
+      </section>
     </main>
   );
 }

@@ -1,4 +1,4 @@
-import { authApi } from "@/services/api";
+import { authApi, api } from "@/services/api";
 
 interface LoginData {
     email: string;
@@ -6,11 +6,15 @@ interface LoginData {
 }
 
 export async function login(data: LoginData) {
-    const response = await authApi.post("/api/auth/login/", data);
+    const response = await authApi.post<{ access: string }>("/api/auth/login/", data);
     return response.data;
 }
 
 export async function refresh() {
-    const response = await authApi.post("/api/auth/refresh/");
+    const response = await authApi.post<{ access: string }>("/api/auth/refresh/");
     return response.data;
+}
+
+export async function logout() {
+    await api.post("/api/auth/logout/");
 }
