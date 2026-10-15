@@ -16,6 +16,10 @@ import ServiceOrderPrintPage from "@/pages/ServiceOrderPrint";
 import StockPage from "@/pages/Stock";
 import AgendaPage from "@/pages/Agenda";
 import CashRegisterPage from "@/pages/CashRegister";
+import ReportsPage from "@/pages/Reports";
+import UsersPage from "@/pages/Users";
+import SettingsPage from "@/pages/Settings";
+import RecoverPasswordPage from "@/pages/RecoverPassword";
 
 function App() {
   return (
@@ -49,7 +53,32 @@ function App() {
             <Route path="/estoque" element={<StockPage />} />
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/caixa" element={<CashRegisterPage />} />
+            <Route
+              path="/relatorios"
+              element={
+                <ProtectedRoute roles={["ADMIN", "MANAGER"]}>
+                  <ReportsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/usuarios"
+              element={
+                <ProtectedRoute roles={["ADMIN", "MANAGER"]}>
+                  <UsersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/configuracoes"
+              element={
+                <ProtectedRoute roles={["ADMIN", "MANAGER"]}>
+                  <SettingsPage />
+                </ProtectedRoute>
+              }
+            />
           </Route>
+          <Route path="/recuperar-senha" element={<RecoverPasswordPage />} />
           <Route
             path="/os/:id/imprimir"
             element={

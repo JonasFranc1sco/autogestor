@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   IconCar,
@@ -14,9 +15,13 @@ import {
   IconPackage,
   IconCalendar,
   IconCash,
+  IconChartBar,
+  IconSettings,
+  IconUserCog,
 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
+import { ProfileDialog } from "@/components/layout/ProfileDialog";
 
 interface SidebarProps {
   onNavigate?: () => void;
@@ -27,6 +32,7 @@ interface SidebarProps {
 export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: SidebarProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [profileOpen, setProfileOpen] = useState(false);
   const isAdminOrManager = user?.role === "ADMIN" || user?.role === "MANAGER";
 
   const navItems: { icon: typeof IconHome; label: string; to: string; adminOnly?: boolean }[] = [
@@ -39,7 +45,10 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
     { icon: IconPackage, label: "Estoque", to: "/estoque" },
     { icon: IconCalendar, label: "Agenda", to: "/agenda" },
     { icon: IconCash, label: "Caixa", to: "/caixa" },
+    { icon: IconChartBar, label: "Relatórios", to: "/relatorios", adminOnly: true },
     { icon: IconUsers, label: "Funcionários", to: "/funcionarios", adminOnly: true },
+    { icon: IconUserCog, label: "Usuários", to: "/usuarios", adminOnly: true },
+    { icon: IconSettings, label: "Configurações", to: "/configuracoes", adminOnly: true },
   ];
 
   const visibleItems = navItems.filter((item) => !item.adminOnly || isAdminOrManager);
@@ -113,9 +122,15 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
         </button>
 
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+          <button
+            type="button"
+            onClick={() => setProfileOpen(true)}
+            aria-label="Abrir meu perfil"
+            title="Meu perfil"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-muted transition-colors hover:bg-primary/10 hover:text-primary"
+          >
             <IconUser size={18} className="text-muted-foreground" />
-          </div>
+          </button>
 
           <div className="flex-1 min-w-0">
             <p className="truncate text-sm font-semibold">{user?.full_name || "Usuário"}</p>
@@ -140,6 +155,8 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
           </button>
         </div>
       </div>
+
+      <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} />
     </aside>
   );
 }

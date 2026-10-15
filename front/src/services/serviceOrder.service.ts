@@ -193,3 +193,37 @@ export async function registerServiceOrderPayment(
 export async function refundServiceOrderPayment(id: string, paymentId: string): Promise<void> {
   await api.delete(`/api/service-orders/${id}/payments/${paymentId}/`);
 }
+
+export interface ServiceOrderAttachment {
+  id: string;
+  file: string;
+  file_url: string | null;
+  description: string | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+export async function getServiceOrderAttachments(id: string): Promise<ServiceOrderAttachment[]> {
+  const response = await api.get<ServiceOrderAttachment[]>(`/api/service-orders/${id}/attachments/`);
+  return response.data;
+}
+
+export async function uploadServiceOrderAttachment(
+  id: string,
+  file: File,
+  description?: string,
+): Promise<ServiceOrderAttachment> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (description) formData.append("description", description);
+  const response = await api.post<ServiceOrderAttachment>(
+    `/api/service-orders/${id}/attachments/`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return response.data;
+}
+
+export async function deleteServiceOrderAttachment(id: string, attachmentId: string): Promise<void> {
+  await api.delete(`/api/service-orders/${id}/attachments/${attachmentId}/`);
+}

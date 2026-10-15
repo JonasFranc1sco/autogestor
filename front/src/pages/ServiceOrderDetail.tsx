@@ -11,6 +11,8 @@ import {
   IconDeviceFloppy,
   IconPrinter,
   IconCash,
+  IconPaperclip,
+  IconUpload,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/layout/Dialog";
@@ -21,12 +23,16 @@ import {
   changeServiceOrderStatus,
   registerServiceOrderPayment,
   refundServiceOrderPayment,
+  getServiceOrderAttachments,
+  uploadServiceOrderAttachment,
+  deleteServiceOrderAttachment,
   STATUS_LABELS,
   STATUS_TRANSITIONS,
   PAYMENT_METHOD_LABELS,
   type ServiceOrder,
   type ServiceOrderStatus,
   type PaymentMethod,
+  type ServiceOrderAttachment,
 } from "@/services/serviceOrder.service";
 import { getEmployees, type Employee } from "@/services/employee.service";
 import { getServices, type Service } from "@/services/service.service";
@@ -88,6 +94,8 @@ export default function ServiceOrderDetailPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
+  const [attachments, setAttachments] = useState<ServiceOrderAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -127,6 +135,13 @@ export default function ServiceOrderDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!id) return;
+    getServiceOrderAttachments(id)
+      .then(setAttachments)
+      .catch(() => toast.error("Não foi possível carregar os anexos."));
+  }, [id]);
 
   useEffect(() => {
     void Promise.all([getEmployees(), getServices(), getProducts()])
@@ -230,6 +245,31 @@ export default function ServiceOrderDetailPage() {
       toast.error(extractApiErrorMessage(error, "Não foi possível registrar o pagamento."));
     } finally {
       setSavingPayment(false);
+    }
+  }
+
+  async function handleUpload(file: File | undefined) {
+    if (!order || !file) return;
+    setUploading(true);
+    try {
+      await uploadServiceOrderAttachment(order.id, file);
+      toast.success("Anexo enviado com sucesso.");
+      setAttachments(await getServiceOrderAttachments(order.id));
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível enviar o anexo."));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDeleteAttachment(attachmentId: string) {
+    if (!order) return;
+    try {
+      await deleteServiceOrderAttachment(order.id, attachmentId);
+      setAttachments((items) => items.filter((item) => item.id !== attachmentId));
+      toast.success("Anexo removido.");
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível remover o anexo."));
     }
   }
 
@@ -732,6 +772,62 @@ export default function ServiceOrderDetailPage() {
             <p className="font-semibold">{formatCurrency(order.balance ?? order.total_price)}</p>
           </div>
         </div>
+      </section>
+
+      <section className="mb-6 rounded-2xl border border-border bg-surface p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-semibold">
+            <IconPaperclip size={18} /> Anexos
+          </h2>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted">
+            <IconUpload size={16} />
+            {uploading ? "Enviando..." : "Enviar anexo"}
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf"
+              disabled={uploading}
+              onChange={(e) => {
+                void handleUpload(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+
+        {attachments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum anexo enviado.</p>
+        ) : (
+          <ul className="space-y-2">
+            {attachments.map((attachment) => (
+              <li key={attachment.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2 text-sm">
+                <div className="min-w-0">
+                  <a
+                    href={attachment.file_url ?? attachment.file}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {attachment.description ?? "Anexo"}
+                  </a>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(attachment.created_at)}
+                    {attachment.uploaded_by_name ? ` · ${attachment.uploaded_by_name}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteAttachment(attachment.id)}
+                  aria-label="Remover anexo"
+                  title="Remover"
+                  className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <IconTrash size={16} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {(order.events ?? []).length > 0 && (

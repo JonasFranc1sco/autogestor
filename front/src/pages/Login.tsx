@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type React from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { IconCar, IconMail, IconLock, IconLoader2 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { extractApiErrorMessage } from "@/lib/errors";
@@ -129,6 +129,12 @@ export default function Login() {
             )}
           </button>
         </form>
+
+        <p className="text-center text-sm">
+          <Link to="/recuperar-senha" className="text-primary hover:underline">
+            Esqueci minha senha
+          </Link>
+        </p>
 
         <p className="text-center text-xs text-muted-foreground">
           Sistema de gestão para oficinas mecânicas
