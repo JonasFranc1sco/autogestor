@@ -253,6 +253,16 @@ POST /api/auth/password-reset/confirm/  — Redefine com uid + token (válido po
 
 ---
 
+### Consulta de CEP
+
+```
+GET /api/utils/cep/?cep=01310100 — Endereço pelo CEP (BrasilAPI/ViaCEP)
+```
+
+Gratuito e sem configuração; retorna `street`, `neighborhood`, `city`, `state`.
+
+---
+
 ### OpenAPI
 
 ```

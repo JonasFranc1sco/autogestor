@@ -290,3 +290,26 @@ class ReportsView(APIView):
             "mechanic_productivity": mechanic_productivity,
             "payments_by_method": payments_by_method,
         })
+
+
+class CepLookupView(APIView):
+    """Consulta de CEP em serviços públicos (BrasilAPI/ViaCEP)."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_scope = "lookup"
+
+    def get(self, request):
+        from core.lookups import InvalidValueError, LookupError, NotFoundError, fetch_cep
+
+        cep = request.query_params.get("cep", "")
+        try:
+            return Response(fetch_cep(cep))
+        except InvalidValueError as error:
+            return Response({"detail": str(error)}, status=400)
+        except NotFoundError:
+            return Response(
+                {"detail": "CEP não encontrado."},
+                status=404,
+            )
+        except LookupError as error:
+            return Response({"detail": str(error)}, status=503)

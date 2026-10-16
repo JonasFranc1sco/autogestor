@@ -231,3 +231,42 @@ class ReportsTotalsTests(APITestCase):
         self.client.force_authenticate(attendant)
         response = self.client.get("/api/reports/")
         self.assertEqual(response.status_code, 403)
+
+
+class LookupApiTests(APITestCase):
+    def setUp(self):
+        self.workshop = Workshop.objects.create(name="Oficina A")
+        self.admin = User.objects.create_user(
+            email="admin@oficina.com",
+            password="senhaForte123",
+            full_name="Admin",
+            role=Role.ADMIN,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(self.admin)
+
+    def test_cep_lookup(self):
+        from unittest.mock import patch
+
+        payload = {
+            "cep": "01310100", "street": "Avenida Paulista",
+            "neighborhood": "Bela Vista", "city": "São Paulo", "state": "SP",
+        }
+        with patch("core.lookups.fetch_cep", return_value=payload):
+            response = self.client.get("/api/utils/cep/", {"cep": "01310-100"})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["city"], "São Paulo")
+
+    def test_cep_lookup_not_found(self):
+        from unittest.mock import patch
+        from core.lookups import NotFoundError
+
+        with patch("core.lookups.fetch_cep", side_effect=NotFoundError):
+            response = self.client.get("/api/utils/cep/", {"cep": "99999999"})
+        self.assertEqual(response.status_code, 404)
+
+    def test_lookup_requires_authentication(self):
+        self.client.force_authenticate(None)
+        response = self.client.get("/api/utils/cep/", {"cep": "01310100"})
+        self.assertEqual(response.status_code, 401)
