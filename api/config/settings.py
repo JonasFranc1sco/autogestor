@@ -113,7 +113,9 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'auth': '20/min',
+        # Proteção de força bruta; configurável por ambiente (dev/suítes sobem o limite).
+        'auth': os.environ.get('THROTTLE_AUTH', '20/min'),
+        'lookup': os.environ.get('THROTTLE_LOOKUP', '60/min'),
     },
 }
 
@@ -252,6 +254,7 @@ EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() in ('true', '1',
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@autogestor.local')
 PASSWORD_RESET_URL = os.environ.get('PASSWORD_RESET_URL', 'http://localhost:3000/recuperar-senha')
 PASSWORD_RESET_TIMEOUT = 60 * 60 * 24  # 24h — mesmo prazo citado no e-mail
+
 
 # Cookies e proxy reverso (HTTPS em produção via VPS/proxy)
 SESSION_COOKIE_SECURE = not DEBUG
