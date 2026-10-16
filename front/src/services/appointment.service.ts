@@ -20,7 +20,7 @@ export const APPOINTMENT_STATUS_TRANSITIONS: Record<AppointmentStatus, Appointme
 export interface Appointment {
   id: string;
   client: { id: string; name: string; document: string | null };
-  vehicle: { id: string; license_plate: string | null; brand: string; model: string };
+  vehicle: { id: string; license_plate: string | null; brand: string; model: string; mileage?: string | null };
   mechanic: { id: string; name: string } | null;
   service_order: string | null;
   scheduled_at: string;

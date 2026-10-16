@@ -99,6 +99,7 @@ export interface ServiceOrder {
     license_plate: string | null;
     brand: string;
     model: string;
+    mileage?: string | null;
   };
   mechanic: {
     id: string;

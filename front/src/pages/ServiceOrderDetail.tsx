@@ -351,6 +351,9 @@ export default function ServiceOrderDetailPage() {
           <p className="text-sm text-muted-foreground">
             {order.vehicle.license_plate ?? "Sem placa"}
           </p>
+          <p className="text-sm text-muted-foreground">
+            {order.vehicle.mileage ? `${order.vehicle.mileage} km` : "Sem quilometragem"}
+          </p>
         </div>
 
         <div className="rounded-2xl border border-border bg-surface p-5">

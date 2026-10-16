@@ -14,6 +14,7 @@ import {
 } from "@/services/vehicle.service";
 import { getClients, type Client } from "@/services/client.service";
 import { maskPlate, isValidPlate } from "@/lib/masks";
+import { tryParseDecimal, tryParseDecimalNumber } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 interface FormValues {
@@ -21,6 +22,7 @@ interface FormValues {
   license_plate: string;
   year: string;
   brand: string;
+  mileage: string;
   model: string;
   color: string;
   chassis: string;
@@ -31,6 +33,7 @@ const emptyForm: FormValues = {
   license_plate: "",
   year: "",
   brand: "",
+  mileage: "",
   model: "",
   color: "",
   chassis: "",
@@ -99,6 +102,7 @@ export default function VehiclesPage() {
       license_plate: vehicle.license_plate ?? "",
       year: vehicle.year ? String(vehicle.year) : "",
       brand: vehicle.brand,
+      mileage: vehicle.mileage ?? "",
       model: vehicle.model,
       color: vehicle.color ?? "",
       chassis: vehicle.chassis ?? "",
@@ -118,6 +122,12 @@ export default function VehiclesPage() {
     if (form.year && (Number(form.year) < 1900 || Number(form.year) > 2100)) {
       errors.year = "Informe um ano válido.";
     }
+    if (form.mileage.trim()) {
+      const parsedMileage = tryParseDecimalNumber(form.mileage);
+      if (parsedMileage === null || parsedMileage < 0) {
+        errors.mileage = "Informe uma quilometragem válida.";
+      }
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -134,6 +144,7 @@ export default function VehiclesPage() {
       model: form.model.trim(),
       color: form.color.trim() || null,
       chassis: form.chassis.trim() || null,
+      mileage: form.mileage.trim() ? tryParseDecimal(form.mileage) : null,
     };
 
     try {
@@ -196,6 +207,7 @@ export default function VehiclesPage() {
                   <th className="px-4 py-3">Veículo</th>
                   <th className="px-4 py-3 max-md:hidden">Proprietário</th>
                   <th className="px-4 py-3 max-lg:hidden">Ano</th>
+                  <th className="px-4 py-3 max-lg:hidden">Quilometragem</th>
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
@@ -211,6 +223,7 @@ export default function VehiclesPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground max-md:hidden">{vehicle.owner.name}</td>
                     <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{vehicle.year ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{vehicle.mileage ?? "—"}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button
@@ -320,6 +333,16 @@ export default function VehiclesPage() {
             onChange={(e) => setForm({ ...form, chassis: e.target.value })}
             placeholder="9BWZZZ377VT004251"
             error={fieldErrors.chassis}
+            className="sm:col-span-2"
+          />
+          <FormField
+            label="Quilometragem"
+            optional
+            inputMode="decimal"
+            value={form.mileage}
+            onChange={(e) => setForm({ ...form, mileage: e.target.value })}
+            placeholder="21.000,00"
+            error={fieldErrors.mileage}
             className="sm:col-span-2"
           />
         </div>

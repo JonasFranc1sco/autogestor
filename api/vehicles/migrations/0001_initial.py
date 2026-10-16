@@ -29,6 +29,7 @@ class Migration(migrations.Migration):
                 ('model', models.CharField(max_length=155)),
                 ('color', models.CharField(blank=True, max_length=50, null=True)),
                 ('chassis', models.CharField(blank=True, max_length=155, null=True)),
+                ('mileage', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True, verbose_name='Quilometragem')),
                 ('owner', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='vehicles', to='clients.client')),
                 ('workshop', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='vehicles', to='core.workshop', verbose_name='Oficina')),
             ],

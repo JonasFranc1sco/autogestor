@@ -30,6 +30,7 @@ class Vehicle(BaseModel):
     model = models.CharField(max_length=155)
     color = models.CharField(max_length=50, blank=True, null=True)
     chassis = models.CharField(max_length=155, blank=True, null=True)
+    mileage = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='Quilometragem')
 
     class Meta(BaseModel.Meta):
         verbose_name = 'Veículo'
