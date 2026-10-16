@@ -4,7 +4,7 @@ import { Dialog } from "@/components/layout/Dialog";
 import { AddressForm, emptyAddress, validateAddress, type AddressFormValues } from "@/components/layout/AddressForm";
 import { FormField, FormSelect } from "@/components/ui/form";
 import { createClient, updateClient, type Client } from "@/services/client.service";
-import { maskCpfCnpj, maskPhone, unmask, isValidCpfCnpj, toLocalPhoneDigits } from "@/lib/masks";
+import { maskCpfCnpj, maskPhone, isValidCpfCnpj, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 interface FormValues {
@@ -77,6 +77,7 @@ export function ClientFormDialog({ open, onClose, editing, defaultValues, onSave
     const errors: Record<string, string> = {};
     if (!form.name.trim()) errors.name = "Informe o nome.";
     if (form.document && !isValidCpfCnpj(form.document)) errors.document = "Informe um CPF ou CNPJ válido.";
+    if (form.phone && !isValidPhone(form.phone)) errors.phone = "Informe o telefone com DDD.";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Informe um e-mail válido.";
 
     const hasAddress = Object.values(form.address).some((value) => value.trim() !== "");
@@ -98,7 +99,7 @@ export function ClientFormDialog({ open, onClose, editing, defaultValues, onSave
       person_type: form.person_type,
       name: form.name.trim(),
       email: form.email.trim() || null,
-      phone: form.phone ? `+55${unmask(form.phone)}` : null,
+      phone: phoneToE164(form.phone),
       document: form.document ? unmask(form.document) : null,
       responsible: form.responsible.trim() || null,
       address: hasAddress ? { ...form.address, complement: form.address.complement || "" } : null,

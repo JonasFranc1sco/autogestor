@@ -15,6 +15,21 @@ export function maskCpfCnpj(value: string): string {
     .replace(/(\d{4})(\d{1,2})$/, "$1-$2");
 }
 
+/**
+ * Normaliza um telefone brasileiro: remove DDI 55 se digitado, insere o nono
+ * dígito em móveis antigos (DDD + 8 dígitos iniciando em 6-9) e limita a 11.
+ */
+export function normalizePhoneDigits(input: string): string {
+  let digits = onlyDigits(input);
+  if (digits.length > 11 && digits.startsWith("55")) {
+    digits = digits.slice(2);
+  }
+  if (digits.length === 10 && /[6-9]/.test(digits[2])) {
+    digits = `${digits.slice(0, 2)}9${digits.slice(2)}`;
+  }
+  return digits.slice(0, 11);
+}
+
 export function maskPhone(value: string): string {
   const digits = onlyDigits(value).slice(0, 11);
   if (digits.length <= 10) {
@@ -25,6 +40,20 @@ export function maskPhone(value: string): string {
   return digits
     .replace(/^(\d{2})(\d)/, "($1) $2")
     .replace(/(\d{5})(\d{1,4})$/, "$1-$2");
+}
+
+/**
+ * Converte o telefone digitado em E.164 brasileiro (+55...), adicionando o
+ * nono dígito quando necessário. Retorna null se incompleto.
+ */
+export function phoneToE164(value: string): string | null {
+  const digits = normalizePhoneDigits(value);
+  if (digits.length < 10) return null;
+  return `+55${digits}`;
+}
+
+export function isValidPhone(value: string): boolean {
+  return normalizePhoneDigits(value).length >= 10;
 }
 
 export function maskCep(value: string): string {
@@ -40,11 +69,7 @@ export function unmask(value: string): string {
 }
 
 export function toLocalPhoneDigits(phone: string): string {
-  const digits = onlyDigits(phone);
-  if (digits.length > 11) {
-    return digits.slice(-11);
-  }
-  return digits;
+  return normalizePhoneDigits(phone);
 }
 
 function checkDigit(base: string, factor: number): string {

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form";
 import { AddressForm, emptyAddress, validateAddress, type AddressFormValues } from "@/components/layout/AddressForm";
 import { getWorkshop, updateWorkshop } from "@/services/workshop.service";
-import { maskCpfCnpj, maskPhone, toLocalPhoneDigits, unmask } from "@/lib/masks";
+import { maskCpfCnpj, maskPhone, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
 import { extractApiErrorMessage } from "@/lib/errors";
 
 export default function SettingsPage() {
@@ -48,6 +48,7 @@ export default function SettingsPage() {
   async function handleSave() {
     const nextErrors: Record<string, string> = {};
     if (!name.trim()) nextErrors.name = "Informe o nome da oficina.";
+    if (phone && !isValidPhone(phone)) nextErrors.phone = "Informe o telefone com DDD.";
     const hasAnyAddress = Object.values(address).some((value) => value.trim() !== "");
     if (hasAnyAddress) {
       for (const [key, value] of Object.entries(validateAddress(address))) {
@@ -62,7 +63,7 @@ export default function SettingsPage() {
       await updateWorkshop({
         name: name.trim(),
         cnpj: cnpj ? unmask(cnpj) : null,
-        phone: phone ? `+55${unmask(phone)}` : null,
+        phone: phoneToE164(phone),
         email: email.trim() || null,
         address: hasAnyAddress ? { ...address, complement: address.complement || "" } : null,
       });

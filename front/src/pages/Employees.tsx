@@ -13,7 +13,7 @@ import {
   deleteEmployee,
   type Employee,
 } from "@/services/employee.service";
-import { maskCpfCnpj, maskPhone, unmask, isValidCpfCnpj, toLocalPhoneDigits } from "@/lib/masks";
+import { maskCpfCnpj, maskPhone, isValidCpfCnpj, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 interface FormValues {
@@ -111,6 +111,7 @@ export default function EmployeesPage() {
     const errors: Record<string, string> = {};
     if (!form.name.trim()) errors.name = "Informe o nome.";
     if (form.document_cpf && !isValidCpfCnpj(form.document_cpf)) errors.document_cpf = "Informe um CPF válido.";
+    if (form.phone && !isValidPhone(form.phone)) errors.phone = "Informe o telefone com DDD.";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Informe um e-mail válido.";
 
     const hasAddress = Object.values(form.address).some((value) => value.trim() !== "");
@@ -131,7 +132,7 @@ export default function EmployeesPage() {
     const payload = {
       name: form.name.trim(),
       email: form.email.trim() || null,
-      phone: form.phone ? `+55${unmask(form.phone)}` : null,
+      phone: phoneToE164(form.phone),
       document_cpf: form.document_cpf ? unmask(form.document_cpf) : null,
       document_rg: form.document_rg.trim() || null,
       address: hasAddress ? { ...form.address, complement: form.address.complement || "" } : null,
