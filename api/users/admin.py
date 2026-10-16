@@ -9,13 +9,13 @@ from users.models import User
 class CustomUserCreationForm(UserCreationForm):
     class Meta: #type: ignore
         model = User
-        fields = ("email", "full_name", "role")
+        fields = ("email", 'workshop',"full_name", "role")
 
 
 class CustomUserChangeForm(UserChangeForm):
     class Meta: #type: ignore
         model = User
-        fields = ("email", "full_name", "role", "is_active", "is_staff")
+        fields = ("email", 'workshop',"full_name", "role", "is_active", "is_staff")
 
 
 @admin.register(User)
@@ -30,7 +30,7 @@ class CustomUserAdmin(UserAdmin):
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        (_("Informações pessoais"), {"fields": ("full_name", "role")}),
+        (_("Informações pessoais"), {"fields": ("full_name", "role", 'workshop')}),
         (
             _("Permissões"),
             {
