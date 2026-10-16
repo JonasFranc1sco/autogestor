@@ -12,6 +12,7 @@ import {
   type Client,
 } from "@/services/client.service";
 import { extractApiErrorMessage } from "@/lib/errors";
+import { maskCpfCnpj } from "@/lib/masks";
 
 export default function ClientsPage() {
   const navigate = useNavigate();
@@ -120,9 +121,9 @@ export default function ClientsPage() {
                   <tr key={client.id} className="border-b border-border/50 last:border-0 hover:bg-foreground/[0.02]">
                     <td className="px-4 py-3">
                       <p className="font-medium">{client.name}</p>
-                      <p className="text-xs text-muted-foreground sm:hidden">{client.document ?? "Sem documento"}</p>
+                      <p className="text-xs text-muted-foreground sm:hidden">{client.document ? maskCpfCnpj(client.document) : "Sem documento"}</p>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground max-sm:hidden">{client.document ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-sm:hidden">{client.document ? maskCpfCnpj(client.document) : "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground max-md:hidden">
                       {client.phone ?? "—"}
                       {client.email ? ` · ${client.email}` : ""}

@@ -33,7 +33,7 @@ class EmployeeApiTests(APITestCase):
             "name": "Marcos Silva",
             "phone": "+5562999990000",
             "email": "marcos@teste.com",
-            "document_cpf": "12345678901",
+            "document_cpf": "52998224725",
             "document_rg": "1234567",
             "address": None,
         }
@@ -44,7 +44,7 @@ class EmployeeApiTests(APITestCase):
         response = self.client.post(EMPLOYEES_URL, self.payload(), format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        employee = Employee.objects.get(document_cpf="12345678901")
+        employee = Employee.objects.get(document_cpf="52998224725")
         self.assertEqual(employee.workshop, self.workshop)
 
     def test_attendant_cannot_create_employee(self):
@@ -81,3 +81,12 @@ class EmployeeApiTests(APITestCase):
         response = self.client.get(EMPLOYEES_URL)
         self.assertEqual(response.data["count"], 0)
         self.assertTrue(Employee.objects.get(id=employee_id).is_active is False)
+
+
+    def test_invalid_cpf_rejected(self):
+        response = self.client.post(
+            EMPLOYEES_URL,
+            {"name": "CPF Ruim", "document_cpf": "12345678901"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

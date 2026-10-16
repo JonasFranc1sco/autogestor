@@ -36,7 +36,7 @@ class ClientApiTests(APITestCase):
             "name": "João Silva",
             "phone": "+5562999990000",
             "email": "joao@teste.com",
-            "document": "12345678901",
+            "document": "52998224725",
             "responsible": "",
             "address": {
                 "cep": "76800000",
@@ -55,7 +55,7 @@ class ClientApiTests(APITestCase):
         response = self.client.post(CLIENTS_URL, self.payload(), format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        client_obj = Client.objects.get(document="12345678901")
+        client_obj = Client.objects.get(document="52998224725")
         self.assertEqual(client_obj.workshop, self.workshop)
         self.assertEqual(client_obj.address.city, "Goiânia")
 
@@ -66,7 +66,7 @@ class ClientApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.assertIsNone(Client.objects.get(document="12345678901").address)
+        self.assertIsNone(Client.objects.get(document="52998224725").address)
 
     def test_update_client_without_address_creates_address(self):
         response = self.client.post(
@@ -101,7 +101,7 @@ class ClientApiTests(APITestCase):
         Client.objects.create(
             workshop=self.other_workshop,
             name="Cliente de Outra Oficina",
-            document="99999999999",
+            document="12345678909",
         )
 
         response = self.client.get(CLIENTS_URL)
@@ -117,7 +117,7 @@ class ClientApiTests(APITestCase):
         foreign = Client.objects.create(
             workshop=self.other_workshop,
             name="Cliente de Outra Oficina",
-            document="99999999999",
+            document="12345678909",
         )
 
         response = self.client.get(f"{CLIENTS_URL}{foreign.id}/")
@@ -127,7 +127,7 @@ class ClientApiTests(APITestCase):
         self.client.post(CLIENTS_URL, self.payload(), format="json")
         self.client.post(
             CLIENTS_URL,
-            self.payload(name="Maria Souza", document="11122233344", email="maria@teste.com"),
+            self.payload(name="Maria Souza", document="11144477735", email="maria@teste.com"),
             format="json",
         )
 
@@ -158,12 +158,57 @@ class ClientApiTests(APITestCase):
         Client.objects.create(
             workshop=self.other_workshop,
             name="Mesmo CPF",
-            document="12345678901",
+            document="52998224725",
         )
-        self.assertEqual(Client.objects.filter(document="12345678901").count(), 2)
+        self.assertEqual(Client.objects.filter(document="52998224725").count(), 2)
 
     def test_same_document_in_same_workshop_rejected(self):
         self.client.post(CLIENTS_URL, self.payload(), format="json")
 
         response = self.client.post(CLIENTS_URL, self.payload(), format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ClientDocumentValidationTests(APITestCase):
+    def setUp(self):
+        self.workshop = Workshop.objects.create(name="Oficina A")
+        self.admin = User.objects.create_user(
+            email="admin@oficina.com",
+            password="senhaForte123",
+            full_name="Admin",
+            role=Role.ADMIN,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(self.admin)
+
+    def test_invalid_cpf_check_digits_rejected(self):
+        response = self.client.post(
+            CLIENTS_URL,
+            {"name": "CPF Inválido", "document": "12345678901"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_valid_cpf_accepted_with_mask(self):
+        response = self.client.post(
+            CLIENTS_URL,
+            {"name": "CPF Válido", "document": "529.982.247-25"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+    def test_invalid_cnpj_rejected(self):
+        response = self.client.post(
+            CLIENTS_URL,
+            {"name": "Empresa", "person_type": "PJ", "document": "11222333000100"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_valid_cnpj_accepted(self):
+        response = self.client.post(
+            CLIENTS_URL,
+            {"name": "Empresa", "person_type": "PJ", "document": "11.222.333/0001-81"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)

@@ -205,9 +205,9 @@ export default function EmployeesPage() {
                   <tr key={employee.id} className="border-b border-border/50 last:border-0 hover:bg-foreground/[0.02]">
                     <td className="px-4 py-3">
                       <p className="font-medium">{employee.name}</p>
-                      <p className="text-xs text-muted-foreground sm:hidden">{employee.document_cpf ?? "Sem CPF"}</p>
+                      <p className="text-xs text-muted-foreground sm:hidden">{employee.document_cpf ? maskCpfCnpj(employee.document_cpf) : "Sem CPF"}</p>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground max-sm:hidden">{employee.document_cpf ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-sm:hidden">{employee.document_cpf ? maskCpfCnpj(employee.document_cpf) : "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground max-md:hidden">
                       {employee.phone ?? "—"}
                       {employee.email ? ` · ${employee.email}` : ""}
