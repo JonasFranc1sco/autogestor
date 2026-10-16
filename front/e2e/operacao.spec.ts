@@ -68,12 +68,12 @@ test.describe("Operação da oficina", () => {
   test("tema escuro é aplicado e persistido", async ({ page }) => {
     await login(page);
 
-    await page.getByRole("button", { name: "Ativar tema escuro" }).click();
+    await page.getByRole("button", { name: "Usar tema escuro" }).click();
     await expect(page.locator("html")).toHaveClass(/dark/);
     await page.reload();
     await expect(page.locator("html")).toHaveClass(/dark/);
 
-    await page.getByRole("button", { name: "Ativar tema claro" }).click();
+    await page.getByRole("button", { name: "Usar tema claro" }).click();
     await expect(page.locator("html")).not.toHaveClass(/dark/);
   });
 });

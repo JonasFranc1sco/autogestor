@@ -1,4 +1,20 @@
 @import "tailwindcss";
+
+/* Transição circular de tema (View Transitions API): desativa o crossfade
+   padrão e mantém o tema novo por cima enquanto o círculo se expande. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2147483647;
+}
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";

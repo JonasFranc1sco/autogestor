@@ -9,8 +9,6 @@ import {
   IconTool,
   IconUser,
   IconLogout,
-  IconSun,
-  IconMoon,
   IconX,
   IconPackage,
   IconCalendar,
@@ -20,7 +18,7 @@ import {
   IconUserCog,
 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useTheme } from "@/contexts/ThemeContext";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ProfileDialog } from "@/components/layout/ProfileDialog";
 
 interface SidebarProps {
@@ -31,7 +29,6 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: SidebarProps) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const [profileOpen, setProfileOpen] = useState(false);
   const isAdminOrManager = user?.role === "ADMIN" || user?.role === "MANAGER";
 
@@ -111,15 +108,9 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
       </nav>
 
       <div className="mt-auto border-t border-border pt-4">
-        <button
-          type="button"
-          onClick={toggleTheme}
-          className="mb-3 flex w-full items-center gap-4 rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-          aria-label={theme === "dark" ? "Ativar tema claro" : "Ativar tema escuro"}
-        >
-          {theme === "dark" ? <IconSun size={18} stroke={1.8} /> : <IconMoon size={18} stroke={1.8} />}
-          {theme === "dark" ? "Tema claro" : "Tema escuro"}
-        </button>
+        <div className="mb-3">
+          <ThemeToggle />
+        </div>
 
         <div className="flex items-center gap-3">
           <button
