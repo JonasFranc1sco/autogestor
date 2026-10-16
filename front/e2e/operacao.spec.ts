@@ -7,7 +7,7 @@ test.describe("Operação da oficina", () => {
     await page.goto("/agenda");
 
     await page.getByRole("button", { name: "Novo Agendamento" }).click();
-    await page.getByLabel(/^Cliente/).selectOption({ label: "João Silva" });
+    await selectOptionByText(page, "Cliente", "João Silva");
     await selectOptionByText(page, "Veículo", "BRA2E19");
 
     const tomorrow = new Date();

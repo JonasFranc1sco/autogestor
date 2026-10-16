@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { IconLoader2, IconPlus, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField, FormSelect, FormTextarea } from "@/components/ui/form";
+import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
+import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
+import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
+import { ProductFormDialog } from "@/components/dialogs/product-form-dialog";
 import { Button } from "@/components/ui/button";
 import {
   getServiceOrders,
@@ -13,9 +17,9 @@ import {
   type ServiceOrder,
   type ServiceOrderStatus,
 } from "@/services/serviceOrder.service";
-import { getClients, type Client } from "@/services/client.service";
+import { getClients } from "@/services/client.service";
 import { getVehicles, type Vehicle } from "@/services/vehicle.service";
-import { getEmployees, type Employee } from "@/services/employee.service";
+import { getEmployees } from "@/services/employee.service";
 import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
 import { formatCurrency, formatDate, parseDecimalValue } from "@/lib/format";
@@ -36,6 +40,7 @@ interface ServiceItemRow {
   service_name: string;
   price: string;
   discount: string;
+  label?: string;
 }
 
 interface ProductItemRow {
@@ -44,6 +49,7 @@ interface ProductItemRow {
   quantity: string;
   price: string;
   discount: string;
+  label?: string;
 }
 
 let rowKey = 0;
@@ -58,15 +64,19 @@ export default function ServiceOrdersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [clients, setClients] = useState<Client[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-
   const [clientId, setClientId] = useState("");
+  const [clientLabel, setClientLabel] = useState("");
   const [vehicleId, setVehicleId] = useState("");
+  const [vehicleLabel, setVehicleLabel] = useState("");
   const [mechanicId, setMechanicId] = useState("");
+  const [mechanicLabel, setMechanicLabel] = useState("");
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [productDialogRowKey, setProductDialogRowKey] = useState<number | null>(null);
+  const [newVehicle, setNewVehicle] = useState<Vehicle | null>(null);
+  const productCache = useRef(new Map<string, Product>());
+  const serviceCache = useRef(new Map<string, Service>());
   const [description, setDescription] = useState("");
   const [observations, setObservations] = useState("");
   const [serviceRows, setServiceRows] = useState<ServiceItemRow[]>([]);
@@ -95,29 +105,12 @@ export default function ServiceOrdersPage() {
   }, [search, statusFilter, load]);
 
   useEffect(() => {
-    void Promise.all([getClients(), getVehicles(), getEmployees(), getServices(), getProducts()])
-      .then(([clientList, vehicleList, employeeList, serviceList, productList]) => {
-        setClients(clientList);
-        setVehicles(vehicleList);
-        setEmployees(employeeList);
-        setServices(serviceList);
-        setProducts(productList);
-      })
-      .catch(() => toast.error("Não foi possível carregar os dados de apoio."));
-  }, []);
-
-  useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
       openCreate();
       navigate(location.pathname, { replace: true, state: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const clientVehicles = useMemo(
-    () => vehicles.filter((vehicle) => vehicle.owner.id === clientId),
-    [vehicles, clientId],
-  );
 
   const servicesTotal = serviceRows.reduce(
     (sum, row) => sum + (parseDecimalValue(row.price) - parseDecimalValue(row.discount)),
@@ -130,8 +123,12 @@ export default function ServiceOrdersPage() {
 
   function openCreate() {
     setClientId("");
+    setClientLabel("");
     setVehicleId("");
+    setVehicleLabel("");
     setMechanicId("");
+    setMechanicLabel("");
+    setNewVehicle(null);
     setDescription("");
     setObservations("");
     setServiceRows([]);
@@ -154,19 +151,24 @@ export default function ServiceOrdersPage() {
     ]);
   }
 
-  function handleProductSelect(key: number, productId: string) {
-    const product = products.find((item) => item.id === productId);
+  function handleProductSelect(key: number, productId: string, label?: string) {
+    const product = productCache.current.get(productId);
     setProductRows((rows) =>
       rows.map((row) =>
         row.key === key
-          ? { ...row, product_id: productId, price: product ? product.sale_price : "" }
+          ? {
+              ...row,
+              product_id: productId,
+              label: label ?? product?.name ?? "",
+              price: product ? product.sale_price : row.price,
+            }
           : row,
       ),
     );
   }
 
-  function handleServiceSelect(key: number, serviceId: string) {
-    const service = services.find((item) => item.id === serviceId);
+  function handleServiceSelect(key: number, serviceId: string, label?: string) {
+    const service = serviceCache.current.get(serviceId);
     setServiceRows((rows) =>
       rows.map((row) =>
         row.key === key
@@ -174,11 +176,81 @@ export default function ServiceOrdersPage() {
               ...row,
               service_id: serviceId,
               service_name: "",
+              label: label ?? service?.name ?? "",
               price: service ? service.sale_price : row.price,
             }
           : row,
       ),
     );
+  }
+
+  const searchClients = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getClients(term || undefined);
+    return list.map((client) => ({
+      id: client.id,
+      primary: client.name,
+      secondary: client.document ?? client.phone ?? undefined,
+    }));
+  }, []);
+
+  const searchVehicles = useCallback(
+    async (term: string): Promise<SearchableOption[]> => {
+      if (!clientId) return [];
+      const list = await getVehicles(term || undefined, clientId);
+      return list.map((vehicle) => ({
+        id: vehicle.id,
+        primary: `${vehicle.license_plate ?? "Sem placa"} — ${vehicle.brand} ${vehicle.model}`,
+        secondary: vehicle.owner.name,
+      }));
+    },
+    [clientId],
+  );
+
+  const searchMechanics = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getEmployees(term || undefined);
+    return list.map((employee) => ({
+      id: employee.id,
+      primary: employee.name,
+      secondary: employee.email ?? undefined,
+    }));
+  }, []);
+
+  const searchServices = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getServices(term || undefined);
+    for (const service of list) serviceCache.current.set(service.id, service);
+    return list.map((service) => ({
+      id: service.id,
+      primary: service.name,
+      secondary: `R$ ${service.sale_price}`,
+    }));
+  }, []);
+
+  const searchProducts = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getProducts(term || undefined);
+    for (const product of list) productCache.current.set(product.id, product);
+    return list.map((product) => ({
+      id: product.id,
+      primary: product.name,
+      secondary: `Estoque: ${product.stock_quantity} un.`,
+    }));
+  }, []);
+
+  // Auto-seleção do veículo criado pelo atalho (issue #21) — só se for do cliente atual.
+  useEffect(() => {
+    if (newVehicle && newVehicle.owner.id === clientId) {
+      setVehicleId(newVehicle.id);
+      setVehicleLabel(`${newVehicle.license_plate ?? "Sem placa"} — ${newVehicle.brand} ${newVehicle.model}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newVehicle]);
+
+  function handleProductCreated(product: Product) {
+    productCache.current.set(product.id, product);
+    if (productDialogRowKey != null) {
+      handleProductSelect(productDialogRowKey, product.id, product.name);
+      setProductDialogRowKey(null);
+    }
+    setProductDialogOpen(false);
   }
 
   function validate(): boolean {
@@ -324,51 +396,51 @@ export default function ServiceOrdersPage() {
         maxWidth="max-w-3xl"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormSelect
+          <SearchableSelect
             label="Cliente"
-            value={clientId}
-            onChange={(e) => {
-              setClientId(e.target.value);
+            value={clientId || null}
+            initialLabel={clientLabel || null}
+            onChange={(id, option) => {
+              setClientId(id ?? "");
+              setClientLabel(option?.primary ?? "");
               setVehicleId("");
+              setVehicleLabel("");
             }}
+            searchOptions={searchClients}
+            placeholder="Digite o nome, CPF ou telefone..."
             error={fieldErrors.client ?? fieldErrors.client_id}
-          >
-            <option value="">Selecione o cliente...</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </FormSelect>
+            createLabel="Novo cliente"
+            onCreate={() => setClientDialogOpen(true)}
+          />
 
-          <FormSelect
+          <SearchableSelect
             label="Veículo"
-            value={vehicleId}
-            onChange={(e) => setVehicleId(e.target.value)}
+            value={vehicleId || null}
+            initialLabel={vehicleLabel || null}
+            onChange={(id, option) => {
+              setVehicleId(id ?? "");
+              setVehicleLabel(option?.primary ?? "");
+            }}
+            searchOptions={searchVehicles}
+            placeholder={clientId ? "Digite a placa, marca ou modelo..." : "Selecione o cliente primeiro"}
             error={fieldErrors.vehicle ?? fieldErrors.vehicle_id}
             disabled={!clientId}
-          >
-            <option value="">{clientId ? "Selecione o veículo..." : "Selecione o cliente primeiro"}</option>
-            {clientVehicles.map((vehicle) => (
-              <option key={vehicle.id} value={vehicle.id}>
-                {vehicle.license_plate ?? "Sem placa"} — {vehicle.brand} {vehicle.model}
-              </option>
-            ))}
-          </FormSelect>
+            createLabel="Novo veículo"
+            onCreate={() => setVehicleDialogOpen(true)}
+          />
 
-          <FormSelect
+          <SearchableSelect
             label="Mecânico responsável"
             optional
-            value={mechanicId}
-            onChange={(e) => setMechanicId(e.target.value)}
-          >
-            <option value="">Nenhum</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </FormSelect>
+            value={mechanicId || null}
+            initialLabel={mechanicLabel || null}
+            onChange={(id, option) => {
+              setMechanicId(id ?? "");
+              setMechanicLabel(option?.primary ?? "");
+            }}
+            searchOptions={searchMechanics}
+            placeholder="Digite o nome do mecânico..."
+          />
 
           <FormField
             label="Descrição"
@@ -394,18 +466,15 @@ export default function ServiceOrdersPage() {
               {serviceRows.map((row) => (
                 <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
                   <div className="sm:col-span-4">
-                    <FormSelect
+                    <SearchableSelect
                       label="Catálogo"
-                      value={row.service_id}
-                      onChange={(e) => handleServiceSelect(row.key, e.target.value)}
-                    >
-                      <option value="">Serviço livre...</option>
-                      {services.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.name}
-                        </option>
-                      ))}
-                    </FormSelect>
+                      optional
+                      value={row.service_id || null}
+                      initialLabel={row.label ?? null}
+                    onChange={(id, option) => handleServiceSelect(row.key, id ?? "", option?.primary)}
+                      searchOptions={searchServices}
+                      placeholder="Serviço livre ou busque no catálogo..."
+                    />
                   </div>
                   {!row.service_id && (
                     <div className="sm:col-span-4">
@@ -483,22 +552,23 @@ export default function ServiceOrdersPage() {
           ) : (
             <div className="space-y-3">
               {productRows.map((row) => {
-                const product = products.find((item) => item.id === row.product_id);
+                const product = productCache.current.get(row.product_id);
                 return (
                   <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
                     <div className="sm:col-span-4">
-                      <FormSelect
+                      <SearchableSelect
                         label="Produto"
-                        value={row.product_id}
-                        onChange={(e) => handleProductSelect(row.key, e.target.value)}
-                      >
-                        <option value="">Selecione...</option>
-                        {products.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.name} (est. {item.stock_quantity})
-                          </option>
-                        ))}
-                      </FormSelect>
+                        value={row.product_id || null}
+                        initialLabel={row.label ?? null}
+                    onChange={(id, option) => handleProductSelect(row.key, id ?? "", option?.primary)}
+                        searchOptions={searchProducts}
+                        placeholder="Digite o nome ou código do produto..."
+                        createLabel="Novo produto"
+                        onCreate={() => {
+                          setProductDialogRowKey(row.key);
+                          setProductDialogOpen(true);
+                        }}
+                      />
                     </div>
                     <div className="sm:col-span-2">
                       <FormField
@@ -593,6 +663,37 @@ export default function ServiceOrdersPage() {
           </div>
         </div>
       </Dialog>
+
+      <ClientFormDialog
+        open={clientDialogOpen}
+        onClose={() => setClientDialogOpen(false)}
+        onSaved={(client) => {
+          if (client) {
+            setClientId(client.id);
+            setClientLabel(client.name);
+            setVehicleId("");
+            setVehicleLabel("");
+          }
+        }}
+      />
+
+      <VehicleFormDialog
+        open={vehicleDialogOpen}
+        onClose={() => setVehicleDialogOpen(false)}
+        defaultValues={
+          clientId ? { owner_id: clientId, owner_label: clientLabel } : undefined
+        }
+        onSaved={(vehicle) => setNewVehicle(vehicle ?? null)}
+      />
+
+      <ProductFormDialog
+        open={productDialogOpen}
+        onClose={() => {
+          setProductDialogOpen(false);
+          setProductDialogRowKey(null);
+        }}
+        onSaved={(product) => product && handleProductCreated(product)}
+      />
     </PageLayout>
   );
 }

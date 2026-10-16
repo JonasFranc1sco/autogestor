@@ -1,40 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { IconLoader2, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconLoader2, IconPencil, IconTrash, IconCar } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { AddressForm, emptyAddress, validateAddress, type AddressFormValues } from "@/components/layout/AddressForm";
-import { FormField, FormSelect } from "@/components/ui/form";
+import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
+import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
 import {
   getClients,
-  createClient,
-  updateClient,
   deleteClient,
   type Client,
 } from "@/services/client.service";
-import { maskCpfCnpj, maskPhone, unmask, isValidCpfCnpj, toLocalPhoneDigits } from "@/lib/masks";
-import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
-
-interface FormValues {
-  person_type: "PF" | "PJ";
-  name: string;
-  email: string;
-  phone: string;
-  document: string;
-  responsible: string;
-  address: AddressFormValues;
-}
-
-const emptyForm: FormValues = {
-  person_type: "PF",
-  name: "",
-  email: "",
-  phone: "",
-  document: "",
-  responsible: "",
-  address: { ...emptyAddress },
-};
+import { extractApiErrorMessage } from "@/lib/errors";
 
 export default function ClientsPage() {
   const navigate = useNavigate();
@@ -43,12 +20,11 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormValues>(emptyForm);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<Client | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [vehicleClient, setVehicleClient] = useState<Client | null>(null);
+  const [newVehicleOpen, setNewVehicleOpen] = useState(false);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (query?: string) => {
@@ -72,98 +48,26 @@ export default function ClientsPage() {
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
-      openCreate();
+      setEditing(null);
+      setDialogOpen(true);
       navigate(location.pathname, { replace: true, state: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openCreate() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setFieldErrors({});
+    setEditing(null);
     setDialogOpen(true);
   }
 
   function openEdit(client: Client) {
-    setEditingId(client.id);
-    setForm({
-      person_type: client.person_type,
-      name: client.name,
-      email: client.email ?? "",
-      phone: toLocalPhoneDigits(client.phone ?? ""),
-      document: client.document ?? "",
-      responsible: client.responsible ?? "",
-      address: client.address
-        ? {
-            cep: client.address.cep,
-            street: client.address.street,
-            number: client.address.number,
-            neighborhood: client.address.neighborhood,
-            city: client.address.city,
-            state: client.address.state,
-            complement: client.address.complement ?? "",
-          }
-        : { ...emptyAddress },
-    });
-    setFieldErrors({});
+    setEditing(client);
     setDialogOpen(true);
   }
 
-  function validate(): boolean {
-    const errors: Record<string, string> = {};
-    if (!form.name.trim()) errors.name = "Informe o nome.";
-    if (form.document && !isValidCpfCnpj(form.document)) errors.document = "Informe um CPF ou CNPJ válido.";
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Informe um e-mail válido.";
-
-    const hasAddress = Object.values(form.address).some((value) => value.trim() !== "");
-    const addressErrors = hasAddress ? validateAddress(form.address) : {};
-
-    const merged: Record<string, string> = { ...errors };
-    for (const [key, value] of Object.entries(addressErrors)) merged[`address.${key}`] = value;
-
-    setFieldErrors(merged);
-    return Object.keys(merged).length === 0;
-  }
-
-  async function handleSubmit() {
-    if (!validate()) return;
-
-    setSaving(true);
-    const hasAddress = Object.values(form.address).some((value) => value.trim() !== "");
-    const payload = {
-      person_type: form.person_type,
-      name: form.name.trim(),
-      email: form.email.trim() || null,
-      phone: form.phone ? `+55${unmask(form.phone)}` : null,
-      document: form.document ? unmask(form.document) : null,
-      responsible: form.responsible.trim() || null,
-      address: hasAddress
-        ? { ...form.address, complement: form.address.complement || "" }
-        : null,
-    };
-
-    try {
-      if (editingId) {
-        await updateClient(editingId, payload);
-        toast.success("Cliente atualizado com sucesso.");
-      } else {
-        await createClient(payload);
-        toast.success("Cliente cadastrado com sucesso.");
-      }
-      setDialogOpen(false);
-      await load(search);
-    } catch (error) {
-      const apiErrors = extractFieldErrors(error);
-      setFieldErrors(
-        Object.fromEntries(
-          Object.entries(apiErrors).map(([key, value]) => [key.replace("address.", "address."), value]),
-        ),
-      );
-      toast.error(extractApiErrorMessage(error, "Não foi possível salvar o cliente."));
-    } finally {
-      setSaving(false);
-    }
+  function openVehicleFor(client: Client) {
+    setVehicleClient(client);
+    setNewVehicleOpen(true);
   }
 
   async function handleDelete() {
@@ -230,6 +134,15 @@ export default function ClientsPage() {
                       <div className="flex justify-end gap-1">
                         <button
                           type="button"
+                          onClick={() => openVehicleFor(client)}
+                          aria-label={`Cadastrar veículo para ${client.name}`}
+                          title="Cadastrar veículo"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-status-done/10 hover:text-status-done"
+                        >
+                          <IconCar size={16} />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openEdit(client)}
                           aria-label={`Editar ${client.name}`}
                           title="Editar"
@@ -259,84 +172,23 @@ export default function ClientsPage() {
         )}
       </div>
 
-      <Dialog
+      <ClientFormDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title={editingId ? "Editar Cliente" : "Novo Cliente"}
-        onSubmit={() => void handleSubmit()}
-        submitLabel={editingId ? "Salvar alterações" : "Cadastrar"}
-        loading={saving}
-        maxWidth="max-w-2xl"
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormSelect
-            label="Tipo"
-            value={form.person_type}
-            onChange={(e) => setForm({ ...form, person_type: e.target.value as "PF" | "PJ" })}
-          >
-            <option value="PF">Pessoa Física (CPF)</option>
-            <option value="PJ">Pessoa Jurídica (CNPJ)</option>
-          </FormSelect>
+        editing={editing}
+        onSaved={() => void load(search)}
+      />
 
-          <FormField
-            label="Nome"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Nome completo"
-            error={fieldErrors.name}
-          />
-
-          <FormField
-            label="CPF / CNPJ"
-            optional
-            value={maskCpfCnpj(form.document)}
-            onChange={(e) => setForm({ ...form, document: e.target.value })}
-            placeholder="000.000.000-00"
-            error={fieldErrors.document}
-          />
-
-          <FormField
-            label="Telefone"
-            optional
-            value={maskPhone(form.phone)}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            placeholder="(62) 99999-0000"
-            error={fieldErrors.phone}
-          />
-
-          <FormField
-            label="E-mail"
-            optional
-            type="email"
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            placeholder="cliente@email.com"
-            error={fieldErrors.email}
-          />
-
-          <FormField
-            label="Responsável"
-            optional
-            value={form.responsible}
-            onChange={(e) => setForm({ ...form, responsible: e.target.value })}
-            placeholder="Responsável / frotista"
-            error={fieldErrors.responsible}
-          />
-        </div>
-
-        <div className="mt-6">
-          <h3 className="mb-3 text-sm font-semibold text-muted-foreground">Endereço</h3>
-          <AddressForm
-            values={form.address}
-            onChange={(address) => setForm({ ...form, address })}
-            errors={Object.fromEntries(
-              Object.entries(fieldErrors)
-                .filter(([key]) => key.startsWith("address."))
-                .map(([key, value]) => [key.replace("address.", ""), value]),
-            )}
-          />
-        </div>
-      </Dialog>
+      <VehicleFormDialog
+        open={newVehicleOpen}
+        onClose={() => setNewVehicleOpen(false)}
+        defaultValues={
+          vehicleClient
+            ? { owner_id: vehicleClient.id, owner_label: vehicleClient.name }
+            : undefined
+        }
+        onSaved={() => void load(search)}
+      />
 
       <Dialog
         open={deleteTarget !== null}

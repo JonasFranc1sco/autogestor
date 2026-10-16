@@ -38,7 +38,7 @@ test.describe("Cadastros", () => {
     await page.goto("/veiculos");
 
     await page.getByRole("button", { name: "Novo Veículo" }).click();
-    await page.getByLabel(/^Proprietário/).selectOption({ label: "João Silva" });
+    await selectOptionByText(page, "Proprietário", "João Silva");
     await page.getByLabel(/^Placa/).fill("1234ABC");
     await page.getByLabel(/^Marca/).fill("Fiat");
     await page.getByLabel(/^Modelo/).fill("Uno");

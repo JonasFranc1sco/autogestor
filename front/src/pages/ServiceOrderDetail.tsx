@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -17,6 +17,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField, FormSelect, FormTextarea } from "@/components/ui/form";
+import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
+import { ProductFormDialog } from "@/components/dialogs/product-form-dialog";
 import {
   getServiceOrder,
   updateServiceOrder,
@@ -34,7 +36,7 @@ import {
   type PaymentMethod,
   type ServiceOrderAttachment,
 } from "@/services/serviceOrder.service";
-import { getEmployees, type Employee } from "@/services/employee.service";
+import { getEmployees } from "@/services/employee.service";
 import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
 import { formatCurrency, formatDateTime, parseDecimalValue, tryParseDecimal } from "@/lib/format";
@@ -47,6 +49,7 @@ interface ServiceItemRow {
   service_name: string;
   price: string;
   discount: string;
+  label?: string;
 }
 
 interface ProductItemRow {
@@ -55,6 +58,7 @@ interface ProductItemRow {
   quantity: string;
   price: string;
   discount: string;
+  label?: string;
 }
 
 let rowKey = 0;
@@ -81,9 +85,11 @@ export default function ServiceOrderDetailPage() {
   const [editing, setEditing] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [mechanicLabel, setMechanicLabel] = useState("");
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [productDialogRowKey, setProductDialogRowKey] = useState<number | null>(null);
+  const productCache = useRef(new Map<string, Product>());
+  const serviceCache = useRef(new Map<string, Service>());
 
   const [mechanicId, setMechanicId] = useState("");
   const [observations, setObservations] = useState("");
@@ -104,6 +110,7 @@ export default function ServiceOrderDetailPage() {
       const data = await getServiceOrder(id);
       setOrder(data);
       setMechanicId(data.mechanic?.id ?? "");
+      setMechanicLabel(data.mechanic?.name ?? "");
       setObservations(data.observations ?? "");
       setOdometer(data.odometer != null ? String(data.odometer) : "");
       setServiceRows(
@@ -111,6 +118,7 @@ export default function ServiceOrderDetailPage() {
           key: ++rowKey,
           service_id: item.service?.id ?? "",
           service_name: "",
+          label: item.service?.name ?? "",
           price: String(item.price),
           discount: String(item.discount ?? 0),
         })),
@@ -119,6 +127,7 @@ export default function ServiceOrderDetailPage() {
         (data.products ?? []).map((item) => ({
           key: ++rowKey,
           product_id: item.product?.id ?? "",
+          label: item.product?.name ?? "",
           quantity: String(item.quantity),
           price: String(item.price),
           discount: String(item.discount ?? 0),
@@ -143,15 +152,49 @@ export default function ServiceOrderDetailPage() {
       .catch(() => toast.error("Não foi possível carregar os anexos."));
   }, [id]);
 
-  useEffect(() => {
-    void Promise.all([getEmployees(), getServices(), getProducts()])
-      .then(([employeeList, serviceList, productList]) => {
-        setEmployees(employeeList);
-        setServices(serviceList);
-        setProducts(productList);
-      })
-      .catch(() => toast.error("Não foi possível carregar os dados de apoio."));
+  const searchMechanics = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getEmployees(term || undefined);
+    return list.map((employee) => ({
+      id: employee.id,
+      primary: employee.name,
+      secondary: employee.email ?? undefined,
+    }));
   }, []);
+
+  const searchServices = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getServices(term || undefined);
+    for (const service of list) serviceCache.current.set(service.id, service);
+    return list.map((service) => ({
+      id: service.id,
+      primary: service.name,
+      secondary: `R$ ${service.sale_price}`,
+    }));
+  }, []);
+
+  const searchProducts = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getProducts(term || undefined);
+    for (const product of list) productCache.current.set(product.id, product);
+    return list.map((product) => ({
+      id: product.id,
+      primary: product.name,
+      secondary: `Estoque: ${product.stock_quantity} un.`,
+    }));
+  }, []);
+
+  function handleProductCreated(product: Product) {
+    productCache.current.set(product.id, product);
+    if (productDialogRowKey != null) {
+      setProductRows((rows) =>
+        rows.map((item) =>
+          item.key === productDialogRowKey
+            ? { ...item, product_id: product.id, label: product.name, price: product.sale_price }
+            : item,
+        ),
+      );
+      setProductDialogRowKey(null);
+    }
+    setProductDialogOpen(false);
+  }
 
   const servicesTotal = serviceRows.reduce(
     (sum, row) => sum + (parseDecimalValue(row.price) - parseDecimalValue(row.discount)),
@@ -371,18 +414,18 @@ export default function ServiceOrderDetailPage() {
             <p className="mb-1 text-sm text-muted-foreground">{order.odometer} km</p>
           )}
           {editing ? (
-            <FormSelect
-              label=""
-              value={mechanicId}
-              onChange={(e) => setMechanicId(e.target.value)}
-            >
-              <option value="">Nenhum</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                </option>
-              ))}
-            </FormSelect>
+            <SearchableSelect
+              label="Mecânico"
+              optional
+              value={mechanicId || null}
+              initialLabel={mechanicLabel || null}
+              onChange={(id, option) => {
+                setMechanicId(id ?? "");
+                setMechanicLabel(option?.primary ?? "");
+              }}
+              searchOptions={searchMechanics}
+              placeholder="Digite o nome do mecânico..."
+            />
           ) : (
             <>
               <p className="font-medium">{order.mechanic?.name ?? "Não atribuído"}</p>
@@ -423,32 +466,30 @@ export default function ServiceOrderDetailPage() {
             {serviceRows.map((row) => (
               <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
                 <div className="sm:col-span-4">
-                  <FormSelect
+                  <SearchableSelect
                     label="Catálogo"
-                    value={row.service_id}
-                    onChange={(e) => {
-                      const service = services.find((item) => item.id === e.target.value);
+                    optional
+                    value={row.service_id || null}
+                    initialLabel={row.label ?? null}
+                    onChange={(id, option) => {
+                      const service = id ? serviceCache.current.get(id) : undefined;
                       setServiceRows((rows) =>
                         rows.map((item) =>
                           item.key === row.key
                             ? {
                                 ...item,
-                                service_id: e.target.value,
+                                service_id: id ?? "",
                                 service_name: "",
+                                label: option?.primary ?? "",
                                 price: service ? service.sale_price : item.price,
                               }
                             : item,
                         ),
                       );
                     }}
-                  >
-                    <option value="">Serviço livre...</option>
-                    {services.map((service) => (
-                      <option key={service.id} value={service.id}>
-                        {service.name}
-                      </option>
-                    ))}
-                  </FormSelect>
+                    searchOptions={searchServices}
+                    placeholder="Serviço livre ou busque no catálogo..."
+                  />
                 </div>
                 {!row.service_id && (
                   <div className="sm:col-span-4">
@@ -557,27 +598,33 @@ export default function ServiceOrderDetailPage() {
             {productRows.map((row) => (
               <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
                 <div className="sm:col-span-4">
-                  <FormSelect
+                  <SearchableSelect
                     label="Produto"
-                    value={row.product_id}
-                    onChange={(e) => {
-                      const product = products.find((item) => item.id === e.target.value);
+                    value={row.product_id || null}
+                    initialLabel={row.label ?? null}
+                    onChange={(id, option) => {
+                      const product = id ? productCache.current.get(id) : undefined;
                       setProductRows((rows) =>
                         rows.map((item) =>
                           item.key === row.key
-                            ? { ...item, product_id: e.target.value, price: product ? product.sale_price : item.price }
+                            ? {
+                                ...item,
+                                product_id: id ?? "",
+                                label: option?.primary ?? "",
+                                price: product ? product.sale_price : item.price,
+                              }
                             : item,
                         ),
                       );
                     }}
-                  >
-                    <option value="">Selecione...</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} (est. {product.stock_quantity})
-                      </option>
-                    ))}
-                  </FormSelect>
+                    searchOptions={searchProducts}
+                    placeholder="Digite o nome ou código do produto..."
+                    createLabel="Novo produto"
+                    onCreate={() => {
+                      setProductDialogRowKey(row.key);
+                      setProductDialogOpen(true);
+                    }}
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <FormField
@@ -911,6 +958,15 @@ export default function ServiceOrderDetailPage() {
           />
         </div>
       </Dialog>
+
+      <ProductFormDialog
+        open={productDialogOpen}
+        onClose={() => {
+          setProductDialogOpen(false);
+          setProductDialogRowKey(null);
+        }}
+        onSaved={(product) => product && handleProductCreated(product)}
+      />
 
       <Dialog
         open={cancelOpen}

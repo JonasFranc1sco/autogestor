@@ -8,7 +8,7 @@ test.describe("Ordem de serviço", () => {
 
     // Criar OS
     await page.getByRole("button", { name: "Nova OS" }).click();
-    await page.getByLabel(/^Cliente/).selectOption({ label: "João Silva" });
+    await selectOptionByText(page, "Cliente", "João Silva");
     await selectOptionByText(page, "Veículo", "BRA2E19");
     await page.getByLabel(/^Descrição/).fill("Revisão completa Playwright");
 
@@ -67,7 +67,7 @@ test.describe("Ordem de serviço", () => {
     // Criar OS com 1 peça
     await page.goto("/os");
     await page.getByRole("button", { name: "Nova OS" }).click();
-    await page.getByLabel(/^Cliente/).selectOption({ label: "João Silva" });
+    await selectOptionByText(page, "Cliente", "João Silva");
     await selectOptionByText(page, "Veículo", "BRA2E19");
     await page.getByRole("button", { name: "Adicionar peça" }).click();
     await selectOptionByText(page, "Produto", "Filtro de Óleo");
@@ -99,7 +99,7 @@ test.describe("Ordem de serviço", () => {
 
     // Nova OS sem itens
     await page.getByRole("button", { name: "Nova OS" }).click();
-    await page.getByLabel(/^Cliente/).selectOption({ label: "João Silva" });
+    await selectOptionByText(page, "Cliente", "João Silva");
     await selectOptionByText(page, "Veículo", "BRA2E19");
     await page.getByRole("button", { name: "Criar OS" }).click();
     await expect(page.getByText(/OS #\d+ criada com sucesso/)).toBeVisible();

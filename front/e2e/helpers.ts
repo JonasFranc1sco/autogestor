@@ -20,8 +20,9 @@ export async function selectOptionByText(
   label: string,
   optionText: string,
 ) {
-  const select = page.getByLabel(label, { exact: true });
-  const option = select.locator("option", { hasText: optionText }).first();
-  const value = await option.getAttribute("value");
-  await select.selectOption(value!);
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const input = page.getByLabel(new RegExp(`^${escaped}`));
+  await input.click();
+  await input.fill(optionText);
+  await page.getByRole("option", { name: optionText }).first().click();
 }

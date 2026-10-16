@@ -4,52 +4,28 @@ import { toast } from "sonner";
 import { IconLoader2, IconPencil, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { FormField, FormSelect } from "@/components/ui/form";
+import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
+import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
 import {
   getVehicles,
-  createVehicle,
-  updateVehicle,
   deleteVehicle,
   type Vehicle,
 } from "@/services/vehicle.service";
-import { getClients, type Client } from "@/services/client.service";
-import { maskPlate, isValidPlate } from "@/lib/masks";
-import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
-
-interface FormValues {
-  owner_id: string;
-  license_plate: string;
-  year: string;
-  brand: string;
-  model: string;
-  color: string;
-  chassis: string;
-}
-
-const emptyForm: FormValues = {
-  owner_id: "",
-  license_plate: "",
-  year: "",
-  brand: "",
-  model: "",
-  color: "",
-  chassis: "",
-};
+import { type Client } from "@/services/client.service";
+import { extractApiErrorMessage } from "@/lib/errors";
 
 export default function VehiclesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormValues>(emptyForm);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState<Vehicle | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [newClient, setNewClient] = useState<Client | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (query?: string) => {
@@ -72,86 +48,25 @@ export default function VehiclesPage() {
   }, [search, load]);
 
   useEffect(() => {
-    getClients()
-      .then(setClients)
-      .catch(() => toast.error("Não foi possível carregar os clientes para seleção."));
-  }, []);
-
-  useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
-      openCreate();
+      setEditing(null);
+      setNewClient(null);
+      setDialogOpen(true);
       navigate(location.pathname, { replace: true, state: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function openCreate() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setFieldErrors({});
+    setEditing(null);
+    setNewClient(null);
     setDialogOpen(true);
   }
 
   function openEdit(vehicle: Vehicle) {
-    setEditingId(vehicle.id);
-    setForm({
-      owner_id: vehicle.owner.id,
-      license_plate: vehicle.license_plate ?? "",
-      year: vehicle.year ? String(vehicle.year) : "",
-      brand: vehicle.brand,
-      model: vehicle.model,
-      color: vehicle.color ?? "",
-      chassis: vehicle.chassis ?? "",
-    });
-    setFieldErrors({});
+    setEditing(vehicle);
+    setNewClient(null);
     setDialogOpen(true);
-  }
-
-  function validate(): boolean {
-    const errors: Record<string, string> = {};
-    if (!form.owner_id) errors.owner_id = "Selecione o proprietário.";
-    if (!form.brand.trim()) errors.brand = "Informe a marca.";
-    if (!form.model.trim()) errors.model = "Informe o modelo.";
-    if (form.license_plate && !isValidPlate(form.license_plate)) {
-      errors.license_plate = "Use o formato ABC1234 ou ABC1D23.";
-    }
-    if (form.year && (Number(form.year) < 1900 || Number(form.year) > 2100)) {
-      errors.year = "Informe um ano válido.";
-    }
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
-  }
-
-  async function handleSubmit() {
-    if (!validate()) return;
-
-    setSaving(true);
-    const payload = {
-      owner_id: form.owner_id,
-      license_plate: form.license_plate ? maskPlate(form.license_plate) : null,
-      year: form.year ? Number(form.year) : null,
-      brand: form.brand.trim(),
-      model: form.model.trim(),
-      color: form.color.trim() || null,
-      chassis: form.chassis.trim() || null,
-    };
-
-    try {
-      if (editingId) {
-        await updateVehicle(editingId, payload);
-        toast.success("Veículo atualizado com sucesso.");
-      } else {
-        await createVehicle(payload);
-        toast.success("Veículo cadastrado com sucesso.");
-      }
-      setDialogOpen(false);
-      await load(search);
-    } catch (error) {
-      setFieldErrors(extractFieldErrors(error));
-      toast.error(extractApiErrorMessage(error, "Não foi possível salvar o veículo."));
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function handleDelete() {
@@ -244,86 +159,22 @@ export default function VehiclesPage() {
         )}
       </div>
 
-      <Dialog
+      <VehicleFormDialog
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        title={editingId ? "Editar Veículo" : "Novo Veículo"}
-        onSubmit={() => void handleSubmit()}
-        submitLabel={editingId ? "Salvar alterações" : "Cadastrar"}
-        loading={saving}
-        maxWidth="max-w-2xl"
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormSelect
-            label="Proprietário"
-            value={form.owner_id}
-            onChange={(e) => setForm({ ...form, owner_id: e.target.value })}
-            error={fieldErrors.owner_id}
-          >
-            <option value="">Selecione o cliente...</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </FormSelect>
+        editing={editing}
+        newClient={newClient}
+        onSaved={() => void load(search)}
+        onCreateClient={() => setClientDialogOpen(true)}
+      />
 
-          <FormField
-            label="Placa"
-            optional
-            value={maskPlate(form.license_plate)}
-            onChange={(e) => setForm({ ...form, license_plate: e.target.value })}
-            placeholder="BRA2E19"
-            error={fieldErrors.license_plate}
-            maxLength={7}
-          />
-
-          <FormField
-            label="Marca"
-            value={form.brand}
-            onChange={(e) => setForm({ ...form, brand: e.target.value })}
-            placeholder="Volkswagen"
-            error={fieldErrors.brand}
-          />
-
-          <FormField
-            label="Modelo"
-            value={form.model}
-            onChange={(e) => setForm({ ...form, model: e.target.value })}
-            placeholder="Gol"
-            error={fieldErrors.model}
-          />
-
-          <FormField
-            label="Ano"
-            optional
-            type="number"
-            value={form.year}
-            onChange={(e) => setForm({ ...form, year: e.target.value })}
-            placeholder="2020"
-            error={fieldErrors.year}
-          />
-
-          <FormField
-            label="Cor"
-            optional
-            value={form.color}
-            onChange={(e) => setForm({ ...form, color: e.target.value })}
-            placeholder="Prata"
-            error={fieldErrors.color}
-          />
-
-          <FormField
-            label="Chassi"
-            optional
-            value={form.chassis}
-            onChange={(e) => setForm({ ...form, chassis: e.target.value })}
-            placeholder="9BWZZZ377VT004251"
-            error={fieldErrors.chassis}
-            className="sm:col-span-2"
-          />
-        </div>
-      </Dialog>
+      <ClientFormDialog
+        open={clientDialogOpen}
+        onClose={() => setClientDialogOpen(false)}
+        onSaved={(client) => {
+          setNewClient(client ?? null);
+        }}
+      />
 
       <Dialog
         open={deleteTarget !== null}

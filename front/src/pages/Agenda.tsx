@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { IconLoader2, IconPencil, IconTrash, IconCheck, IconX, IconMoodSad } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { FormField, FormSelect, FormTextarea } from "@/components/ui/form";
+import { FormField, FormTextarea } from "@/components/ui/form";
 import {
   getAppointments,
   createAppointment,
@@ -15,9 +15,12 @@ import {
   type Appointment,
   type AppointmentStatus,
 } from "@/services/appointment.service";
-import { getClients, type Client } from "@/services/client.service";
-import { getVehicles, type Vehicle } from "@/services/vehicle.service";
-import { getEmployees, type Employee } from "@/services/employee.service";
+import { getClients } from "@/services/client.service";
+import { getVehicles } from "@/services/vehicle.service";
+import { getEmployees } from "@/services/employee.service";
+import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
+import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
+import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
 import { formatDateTime } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
@@ -65,10 +68,12 @@ function toTimeInput(iso: string): string {
 
 export default function AgendaPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clientLabel, setClientLabel] = useState("");
+  const [vehicleLabel, setVehicleLabel] = useState("");
+  const [mechanicLabel, setMechanicLabel] = useState("");
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -100,17 +105,38 @@ export default function AgendaPage() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    void Promise.all([getClients(), getVehicles(), getEmployees()])
-      .then(([clientList, vehicleList, employeeList]) => {
-        setClients(clientList);
-        setVehicles(vehicleList);
-        setEmployees(employeeList);
-      })
-      .catch(() => toast.error("Não foi possível carregar os dados de apoio."));
+  const searchClients = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getClients(term || undefined);
+    return list.map((client) => ({
+      id: client.id,
+      primary: client.name,
+      secondary: client.document ?? client.phone ?? undefined,
+    }));
   }, []);
 
-  const clientVehicles = vehicles.filter((vehicle) => vehicle.owner.id === form.client_id);
+  const searchVehicles = useCallback(
+    async (term: string): Promise<SearchableOption[]> => {
+      if (!form.client_id) return [];
+      const list = await getVehicles(term || undefined, form.client_id);
+      return list.map((vehicle) => ({
+        id: vehicle.id,
+        primary: `${vehicle.license_plate ?? "Sem placa"} — ${vehicle.brand} ${vehicle.model}`,
+        secondary: vehicle.owner.name,
+      }));
+    },
+    [form.client_id],
+  );
+
+  const searchMechanics = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getEmployees(term || undefined);
+    return list.map((employee) => ({
+      id: employee.id,
+      primary: employee.name,
+      secondary: employee.email ?? undefined,
+    }));
+  }, []);
+
+
 
   const filtered = appointments.filter((appointment) =>
     search
@@ -122,6 +148,9 @@ export default function AgendaPage() {
   function openCreate() {
     setEditingId(null);
     setForm(emptyForm);
+    setClientLabel("");
+    setVehicleLabel("");
+    setMechanicLabel("");
     setFieldErrors({});
     setDialogOpen(true);
   }
@@ -137,6 +166,9 @@ export default function AgendaPage() {
       duration: String(appointment.expected_duration_minutes),
       description: appointment.description ?? "",
     });
+    setClientLabel(appointment.client.name);
+    setVehicleLabel(`${appointment.vehicle.license_plate ?? "Sem placa"} — ${appointment.vehicle.brand} ${appointment.vehicle.model}`);
+    setMechanicLabel(appointment.mechanic?.name ?? "");
     setFieldErrors({});
     setDialogOpen(true);
   }
@@ -351,50 +383,50 @@ export default function AgendaPage() {
         maxWidth="max-w-2xl"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormSelect
+          <SearchableSelect
             label="Cliente"
-            value={form.client_id}
-            onChange={(e) => setForm({ ...form, client_id: e.target.value, vehicle_id: "" })}
+            value={form.client_id || null}
+            initialLabel={clientLabel || null}
+            onChange={(id, option) => {
+              setForm({ ...form, client_id: id ?? "", vehicle_id: "" });
+              setClientLabel(option?.primary ?? "");
+              setVehicleLabel("");
+            }}
+            searchOptions={searchClients}
+            placeholder="Digite o nome, CPF ou telefone..."
             error={fieldErrors.client_id}
-          >
-            <option value="">Selecione o cliente...</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </FormSelect>
+            createLabel="Novo cliente"
+            onCreate={() => setClientDialogOpen(true)}
+          />
 
-          <FormSelect
+          <SearchableSelect
             label="Veículo"
-            value={form.vehicle_id}
-            onChange={(e) => setForm({ ...form, vehicle_id: e.target.value })}
+            value={form.vehicle_id || null}
+            initialLabel={vehicleLabel || null}
+            onChange={(id, option) => {
+              setForm({ ...form, vehicle_id: id ?? "" });
+              setVehicleLabel(option?.primary ?? "");
+            }}
+            searchOptions={searchVehicles}
+            placeholder={form.client_id ? "Digite a placa, marca ou modelo..." : "Selecione o cliente primeiro"}
             error={fieldErrors.vehicle_id}
             disabled={!form.client_id}
-          >
-            <option value="">
-              {form.client_id ? "Selecione o veículo..." : "Selecione o cliente primeiro"}
-            </option>
-            {clientVehicles.map((vehicle) => (
-              <option key={vehicle.id} value={vehicle.id}>
-                {vehicle.license_plate ?? "Sem placa"} — {vehicle.brand} {vehicle.model}
-              </option>
-            ))}
-          </FormSelect>
+            createLabel="Novo veículo"
+            onCreate={() => setVehicleDialogOpen(true)}
+          />
 
-          <FormSelect
+          <SearchableSelect
             label="Mecânico"
             optional
-            value={form.mechanic_id}
-            onChange={(e) => setForm({ ...form, mechanic_id: e.target.value })}
-          >
-            <option value="">Nenhum</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </FormSelect>
+            value={form.mechanic_id || null}
+            initialLabel={mechanicLabel || null}
+            onChange={(id, option) => {
+              setForm({ ...form, mechanic_id: id ?? "" });
+              setMechanicLabel(option?.primary ?? "");
+            }}
+            searchOptions={searchMechanics}
+            placeholder="Digite o nome do mecânico..."
+          />
 
           <FormField
             label="Duração (minutos)"
@@ -449,6 +481,32 @@ export default function AgendaPage() {
           {deleteTarget ? formatDateTime(deleteTarget.scheduled_at) : ""}?
         </p>
       </Dialog>
+
+      <ClientFormDialog
+        open={clientDialogOpen}
+        onClose={() => setClientDialogOpen(false)}
+        onSaved={(client) => {
+          if (client) {
+            setForm((current) => ({ ...current, client_id: client.id, vehicle_id: "" }));
+            setClientLabel(client.name);
+            setVehicleLabel("");
+          }
+        }}
+      />
+
+      <VehicleFormDialog
+        open={vehicleDialogOpen}
+        onClose={() => setVehicleDialogOpen(false)}
+        defaultValues={
+          form.client_id ? { owner_id: form.client_id, owner_label: clientLabel } : undefined
+        }
+        onSaved={(vehicle) => {
+          if (vehicle) {
+            setForm((current) => ({ ...current, vehicle_id: vehicle.id }));
+            setVehicleLabel(`${vehicle.license_plate ?? "Sem placa"} — ${vehicle.brand} ${vehicle.model}`);
+          }
+        }}
+      />
     </PageLayout>
   );
 }

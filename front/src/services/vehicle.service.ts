@@ -30,9 +30,13 @@ export interface VehicleCreateData {
 
 export type VehicleUpdateData = Partial<VehicleCreateData>;
 
-export async function getVehicles(search?: string): Promise<Vehicle[]> {
+export async function getVehicles(search?: string, ownerId?: string): Promise<Vehicle[]> {
   const response = await api.get<Paginated<Vehicle>>("/api/vehicles/", {
-    params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
+    params: {
+      page_size: LIST_PAGE_SIZE,
+      ...(search ? { search } : {}),
+      ...(ownerId ? { owner: ownerId } : {}),
+    },
   });
   return response.data.results;
 }

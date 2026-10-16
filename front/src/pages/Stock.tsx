@@ -4,6 +4,7 @@ import { IconLoader2, IconArrowDown, IconArrowUp, IconAdjustments } from "@table
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField, FormSelect, FormTextarea } from "@/components/ui/form";
+import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import {
   getStockMovements,
   createStockMovement,
@@ -51,6 +52,17 @@ export default function StockPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormValues>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [productLabel, setProductLabel] = useState("");
+  const [filterLabel, setFilterLabel] = useState("");
+
+  const searchProducts = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getProducts(term || undefined);
+    return list.map((product) => ({
+      id: product.id,
+      primary: product.name,
+      secondary: `Saldo: ${product.stock_quantity} un.`,
+    }));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,6 +97,7 @@ export default function StockPage() {
 
   function openCreate() {
     setForm(emptyForm);
+    setProductLabel("");
     setFieldErrors({});
     setDialogOpen(true);
   }
@@ -152,18 +165,18 @@ export default function StockPage() {
       )}
 
       <div className="mb-4 max-w-sm">
-        <FormSelect
+        <SearchableSelect
           label="Filtrar por produto"
-          value={productFilter}
-          onChange={(e) => setProductFilter(e.target.value)}
-        >
-          <option value="">Todos os produtos</option>
-          {products.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.name}
-            </option>
-          ))}
-        </FormSelect>
+          optional
+          value={productFilter || null}
+          initialLabel={filterLabel || null}
+          onChange={(id, option) => {
+            setProductFilter(id ?? "");
+            setFilterLabel(option?.primary ?? "");
+          }}
+          searchOptions={searchProducts}
+          placeholder="Todos os produtos"
+        />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface">
@@ -230,19 +243,18 @@ export default function StockPage() {
         maxWidth="max-w-lg"
       >
         <div className="grid grid-cols-1 gap-4">
-          <FormSelect
+          <SearchableSelect
             label="Produto"
-            value={form.product_id}
-            onChange={(e) => setForm({ ...form, product_id: e.target.value })}
+            value={form.product_id || null}
+            initialLabel={productLabel || null}
+            onChange={(id, option) => {
+              setForm({ ...form, product_id: id ?? "" });
+              setProductLabel(option?.primary ?? "");
+            }}
+            searchOptions={searchProducts}
+            placeholder="Digite o nome ou código do produto..."
             error={fieldErrors.product_id}
-          >
-            <option value="">Selecione o produto...</option>
-            {products.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name} (saldo: {product.stock_quantity})
-              </option>
-            ))}
-          </FormSelect>
+          />
 
           <FormSelect
             label="Tipo de movimentação"

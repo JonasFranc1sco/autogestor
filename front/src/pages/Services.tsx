@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { IconLoader2, IconPencil, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { FormField, FormSelect, FormTextarea } from "@/components/ui/form";
+import { FormField, FormTextarea } from "@/components/ui/form";
+import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import {
   getServices,
   createService,
@@ -12,7 +13,7 @@ import {
   deleteService,
   type Service,
 } from "@/services/service.service";
-import { getEmployees, type Employee } from "@/services/employee.service";
+import { getEmployees } from "@/services/employee.service";
 import { formatCurrency, tryParseDecimal } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
@@ -36,7 +37,7 @@ export default function ServicesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [services, setServices] = useState<Service[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeeLabel, setEmployeeLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -68,12 +69,6 @@ export default function ServicesPage() {
   }, [search, load]);
 
   useEffect(() => {
-    getEmployees()
-      .then(setEmployees)
-      .catch(() => toast.error("Não foi possível carregar os funcionários."));
-  }, []);
-
-  useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
       openCreate();
       navigate(location.pathname, { replace: true, state: null });
@@ -81,9 +76,19 @@ export default function ServicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const searchEmployees = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getEmployees(term || undefined);
+    return list.map((employee) => ({
+      id: employee.id,
+      primary: employee.name,
+      secondary: employee.email ?? undefined,
+    }));
+  }, []);
+
   function openCreate() {
     setEditingId(null);
     setForm(emptyForm);
+    setEmployeeLabel("");
     setFieldErrors({});
     setDialogOpen(true);
   }
@@ -97,6 +102,7 @@ export default function ServicesPage() {
       cost_price: service.cost_price ?? "0",
       sale_price: service.sale_price,
     });
+    setEmployeeLabel(service.employee?.name ?? "");
     setFieldErrors({});
     setDialogOpen(true);
   }
@@ -248,20 +254,19 @@ export default function ServicesPage() {
             error={fieldErrors.name}
           />
 
-          <FormSelect
+          <SearchableSelect
             label="Responsável"
             optional
-            value={form.employee_id}
-            onChange={(e) => setForm({ ...form, employee_id: e.target.value })}
+            value={form.employee_id || null}
+            initialLabel={employeeLabel || null}
+            onChange={(id, option) => {
+              setForm({ ...form, employee_id: id ?? "" });
+              setEmployeeLabel(option?.primary ?? "");
+            }}
+            searchOptions={searchEmployees}
+            placeholder="Digite o nome do funcionário..."
             error={fieldErrors.employee_id}
-          >
-            <option value="">Nenhum</option>
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name}
-              </option>
-            ))}
-          </FormSelect>
+          />
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField

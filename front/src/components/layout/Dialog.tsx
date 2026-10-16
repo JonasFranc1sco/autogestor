@@ -1,4 +1,8 @@
 import { type ReactNode, useEffect, useRef } from "react";
+
+// Controle de modais empilhados: apenas o topo responde a Escape e gerencia o scroll do body.
+let dialogSeq = 0;
+const openDialogs = new Set<number>();
 import { IconX } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 
@@ -32,15 +36,22 @@ export function Dialog({
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const dialogIdRef = useRef(0);
+  if (dialogIdRef.current === 0) dialogIdRef.current = ++dialogSeq;
 
   useEffect(() => {
     if (!open) return;
 
-    document.body.style.overflow = "hidden";
+    const dialogId = dialogIdRef.current;
+    openDialogs.add(dialogId);
+    const isTop = () => Math.max(...openDialogs) === dialogId;
+
+    if (isTop()) document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.stopPropagation();
+      if (event.key === "Escape" && isTop()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
         onCloseRef.current();
       }
     }
@@ -53,7 +64,8 @@ export function Dialog({
     firstFocusable?.focus();
 
     return () => {
-      document.body.style.overflow = "";
+      openDialogs.delete(dialogId);
+      if (openDialogs.size === 0) document.body.style.overflow = "";
       document.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [open]);
