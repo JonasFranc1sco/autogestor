@@ -111,6 +111,7 @@ export default function VehiclesPage() {
                   <th className="px-4 py-3">Veículo</th>
                   <th className="px-4 py-3 max-md:hidden">Proprietário</th>
                   <th className="px-4 py-3 max-lg:hidden">Ano</th>
+                  <th className="px-4 py-3 max-lg:hidden">Quilometragem</th>
                   <th className="px-4 py-3 text-right">Ações</th>
                 </tr>
               </thead>
@@ -126,6 +127,7 @@ export default function VehiclesPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground max-md:hidden">{vehicle.owner.name}</td>
                     <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{vehicle.year ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{vehicle.mileage ? `${vehicle.mileage} km` : "—"}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         <button

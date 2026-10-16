@@ -6,6 +6,7 @@ import { SearchableSelect, type SearchableOption } from "@/components/ui/searcha
 import { createVehicle, updateVehicle, type Vehicle } from "@/services/vehicle.service";
 import { getClients, type Client } from "@/services/client.service";
 import { maskPlate, isValidPlate } from "@/lib/masks";
+import { tryParseDecimal, tryParseDecimalNumber } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 interface FormValues {
@@ -14,6 +15,7 @@ interface FormValues {
   license_plate: string;
   year: string;
   brand: string;
+  mileage: string;
   model: string;
   color: string;
   chassis: string;
@@ -25,6 +27,7 @@ const emptyForm: FormValues = {
   license_plate: "",
   year: "",
   brand: "",
+  mileage: "",
   model: "",
   color: "",
   chassis: "",
@@ -70,6 +73,7 @@ export function VehicleFormDialog({
         license_plate: editing.license_plate ?? "",
         year: editing.year ? String(editing.year) : "",
         brand: editing.brand,
+        mileage: editing.mileage ?? "",
         model: editing.model,
         color: editing.color ?? "",
         chassis: editing.chassis ?? "",
@@ -113,6 +117,12 @@ export function VehicleFormDialog({
     if (form.year && (Number(form.year) < 1900 || Number(form.year) > 2100)) {
       errors.year = "Informe um ano válido.";
     }
+    if (form.mileage.trim()) {
+      const parsedMileage = tryParseDecimalNumber(form.mileage);
+      if (parsedMileage === null || parsedMileage < 0) {
+        errors.mileage = "Informe uma quilometragem válida.";
+      }
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -126,6 +136,7 @@ export function VehicleFormDialog({
       license_plate: form.license_plate ? maskPlate(form.license_plate) : null,
       year: form.year ? Number(form.year) : null,
       brand: form.brand.trim(),
+      mileage: form.mileage.trim() ? tryParseDecimal(form.mileage) : null,
       model: form.model.trim(),
       color: form.color.trim() || null,
       chassis: form.chassis.trim() || null,
@@ -193,6 +204,16 @@ export function VehicleFormDialog({
           onChange={(e) => setForm({ ...form, brand: e.target.value })}
           placeholder="Volkswagen"
           error={fieldErrors.brand}
+        />
+
+        <FormField
+          label="Quilometragem (km)"
+          optional
+          value={form.mileage}
+          inputMode="decimal"
+          onChange={(e) => setForm({ ...form, mileage: e.target.value })}
+          placeholder="120000"
+          error={fieldErrors.mileage}
         />
 
         <FormField

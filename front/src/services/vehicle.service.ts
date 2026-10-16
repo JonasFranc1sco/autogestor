@@ -11,6 +11,7 @@ export interface Vehicle {
   license_plate: string | null;
   year: number | null;
   brand: string;
+  mileage: string | null;
   model: string;
   color: string | null;
   chassis: string | null;
@@ -26,6 +27,7 @@ export interface VehicleCreateData {
   model: string;
   color?: string | null;
   chassis?: string | null;
+  mileage?: string | null;
 }
 
 export type VehicleUpdateData = Partial<VehicleCreateData>;

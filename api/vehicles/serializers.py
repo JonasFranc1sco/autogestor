@@ -20,7 +20,7 @@ class VehicleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Vehicle
-        fields = ['id', 'owner', 'owner_id', 'license_plate', 'year', 'brand', 'model', 'color', 'chassis', 'created_at', 'updated_at']
+        fields = ['id', 'owner', 'owner_id', 'license_plate', 'mileage', 'year', 'brand', 'model', 'color', 'chassis', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
     def validate_license_plate(self, value):

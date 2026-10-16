@@ -42,6 +42,7 @@ class VehicleApiTests(APITestCase):
             "model": "Gol",
             "color": "Prata",
             "chassis": "9BWZZZ377VT004251",
+            "mileage": "21000.00",
         }
         data.update(overrides)
         return data
@@ -53,6 +54,7 @@ class VehicleApiTests(APITestCase):
         vehicle = Vehicle.objects.get(license_plate="BRA2E19")
         self.assertEqual(vehicle.workshop, self.workshop)
         self.assertEqual(vehicle.year, 2020)
+        self.assertEqual(str(vehicle.mileage), "21000.00")
 
     def test_invalid_license_plate_rejected(self):
         response = self.client.post(

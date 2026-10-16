@@ -17,7 +17,7 @@ class VehicleViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ["owner", "brand"]
     search_fields = ["license_plate", "brand", "model", "owner__name", "chassis"]
-    ordering_fields = ["license_plate", "created_at", "brand"]
+    ordering_fields = ["license_plate", "mileage", "created_at", "brand"]
     ordering = ["license_plate"]
 
     def get_queryset(self):

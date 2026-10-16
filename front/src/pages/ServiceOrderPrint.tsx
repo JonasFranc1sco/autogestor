@@ -87,7 +87,11 @@ export default function ServiceOrderPrintPage() {
               </p>
               <p className="text-sm text-muted-foreground">
                 Placa: {order.vehicle.license_plate ?? "—"}
-                {order.odometer ? ` · ${order.odometer} km` : ""}
+                {order.odometer
+                  ? ` · ${order.odometer} km`
+                  : order.vehicle.mileage
+                    ? ` · ${order.vehicle.mileage} km`
+                    : ""}
               </p>
             </div>
           </section>
