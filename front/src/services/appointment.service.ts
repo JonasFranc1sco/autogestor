@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export type AppointmentStatus = "SCHEDULED" | "COMPLETED" | "NO_SHOW" | "CANCELLED";
 
@@ -51,6 +51,27 @@ export async function getAppointments(filters?: {
     params: { page_size: LIST_PAGE_SIZE, ...filters },
   });
   return response.data.results;
+}
+
+export async function getAppointmentsPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  date_from?: string;
+  date_to?: string;
+  status?: string;
+}): Promise<Paginated<Appointment>> {
+  const response = await api.get<Paginated<Appointment>>("/api/appointments/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+      ...(params?.date_from ? { date_from: params.date_from } : {}),
+      ...(params?.date_to ? { date_to: params.date_to } : {}),
+      ...(params?.status ? { status: params.status } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function createAppointment(data: AppointmentCreateData): Promise<Appointment> {

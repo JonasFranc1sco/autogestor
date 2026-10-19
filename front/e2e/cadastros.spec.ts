@@ -65,4 +65,80 @@ test.describe("Cadastros", () => {
     await expect(row.getByText("R$ 60,00")).toBeVisible();
     await expect(row.getByText("8 un.")).toBeVisible();
   });
+
+  test("issue #22: paginação numérica navega entre páginas e reseta ao buscar", async ({ page }) => {
+    const mockedClients = Array.from({ length: 25 }, (_, index) => ({
+      id: `client-${index + 1}`,
+      person_type: "PF",
+      name: `Cliente Paginado ${String(index + 1).padStart(2, "0")}`,
+      phone: "+5562999990000",
+      email: `cliente${index + 1}@teste.com`,
+      address: null,
+      document: null,
+      responsible: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+
+    await page.route("**/api/clients/**", async (route) => {
+      const url = new URL(route.request().url());
+      const currentPage = Number(url.searchParams.get("page") ?? "1");
+      const pageSize = Number(url.searchParams.get("page_size") ?? "10");
+      const search = (url.searchParams.get("search") ?? "").toLowerCase();
+
+      const filtered = search
+        ? mockedClients.filter((item) => item.name.toLowerCase().includes(search))
+        : mockedClients;
+      const start = (currentPage - 1) * pageSize;
+      const results = filtered.slice(start, start + pageSize);
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          count: filtered.length,
+          next: start + pageSize < filtered.length ? `?page=${currentPage + 1}` : null,
+          previous: currentPage > 1 ? `?page=${currentPage - 1}` : null,
+          results,
+        }),
+      });
+    });
+
+    await login(page);
+    await page.goto("/clientes");
+
+    const pagination = page.getByRole("navigation", { name: "Paginação" });
+    await expect(pagination).toBeVisible();
+    await expect(pagination.getByText(/Exibindo 1–10 de 25 cliente\(s\)/)).toBeVisible();
+
+    const prevButton = pagination.getByRole("button", { name: "Página anterior" });
+    const nextButton = pagination.getByRole("button", { name: "Próxima página" });
+    const page1Button = pagination.getByRole("button", { name: "Página 1" });
+    const page2Button = pagination.getByRole("button", { name: "Página 2" });
+    const page3Button = pagination.getByRole("button", { name: "Página 3" });
+
+    await expect(prevButton).toBeDisabled();
+    await expect(nextButton).toBeEnabled();
+    await expect(page1Button).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("cell", { name: "Cliente Paginado 01", exact: true })).toBeVisible();
+
+    // Navegar diretamente clicando no número da página 2
+    await page2Button.click();
+    await expect(page2Button).toHaveAttribute("aria-current", "page");
+    await expect(prevButton).toBeEnabled();
+    await expect(page.getByRole("cell", { name: "Cliente Paginado 11", exact: true })).toBeVisible();
+
+    // Avançar para a última página (página 3)
+    await nextButton.click();
+    await expect(page3Button).toHaveAttribute("aria-current", "page");
+    await expect(nextButton).toBeDisabled();
+    await expect(page.getByRole("cell", { name: "Cliente Paginado 25", exact: true })).toBeVisible();
+
+    // Buscar altera o filtro e retorna automaticamente para a página 1
+    await page.getByLabel(/Buscar por nome/).fill("Cliente Paginado 02");
+    await expect(page1Button).toHaveAttribute("aria-current", "page");
+    await expect(prevButton).toBeDisabled();
+    await expect(nextButton).toBeDisabled();
+    await expect(page.getByRole("cell", { name: "Cliente Paginado 02", exact: true })).toBeVisible();
+  });
 });

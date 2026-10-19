@@ -6,11 +6,13 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
 import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getClients,
+  getClientsPaginated,
   deleteClient,
   type Client,
 } from "@/services/client.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { extractApiErrorMessage } from "@/lib/errors";
 import { maskCpfCnpj } from "@/lib/masks";
 
@@ -18,34 +20,53 @@ export default function ClientsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [clients, setClients] = useState<Client[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [vehicleClient, setVehicleClient] = useState<Client | null>(null);
   const [newVehicleOpen, setNewVehicleOpen] = useState(false);
-  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async (query?: string) => {
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      setClients(await getClients(query));
+      const data = await getClientsPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setClients(data.results);
+      setTotalCount(data.count);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar os clientes."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (searchRef.current) clearTimeout(searchRef.current);
-    searchRef.current = setTimeout(() => void load(search), 300);
-    return () => {
-      if (searchRef.current) clearTimeout(searchRef.current);
-    };
-  }, [search, load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
@@ -78,7 +99,7 @@ export default function ClientsPage() {
       await deleteClient(deleteTarget.id);
       toast.success("Cliente removido com sucesso.");
       setDeleteTarget(null);
-      await load(search);
+      await load(page, debouncedSearch);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível remover o cliente."));
     } finally {
@@ -166,9 +187,12 @@ export default function ClientsPage() {
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {clients.length} cliente(s) exibido(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="cliente(s)"
+            />
           </>
         )}
       </div>
@@ -177,7 +201,7 @@ export default function ClientsPage() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         editing={editing}
-        onSaved={() => void load(search)}
+        onSaved={() => void load(page, debouncedSearch)}
       />
 
       <VehicleFormDialog
@@ -188,7 +212,7 @@ export default function ClientsPage() {
             ? { owner_id: vehicleClient.id, owner_label: vehicleClient.name }
             : undefined
         }
-        onSaved={() => void load(search)}
+        onSaved={() => void load(page, debouncedSearch)}
       />
 
       <Dialog

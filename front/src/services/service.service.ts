@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface Service {
   id: string;
@@ -33,6 +33,21 @@ export async function getServices(search?: string): Promise<Service[]> {
     params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
   });
   return response.data.results;
+}
+
+export async function getServicesPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+}): Promise<Paginated<Service>> {
+  const response = await api.get<Paginated<Service>>("/api/services/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function createService(data: ServiceCreateData): Promise<Service> {

@@ -10,8 +10,9 @@ import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
 import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
 import { ProductFormDialog } from "@/components/dialogs/product-form-dialog";
 import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getServiceOrders,
+  getServiceOrdersPaginated,
   createServiceOrder,
   STATUS_LABELS,
   type ServiceOrder,
@@ -22,6 +23,7 @@ import { getVehicles, type Vehicle } from "@/services/vehicle.service";
 import { getEmployees } from "@/services/employee.service";
 import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { formatCurrency, formatDate, parseDecimalValue } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
@@ -58,8 +60,11 @@ export default function ServiceOrdersPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [orders, setOrders] = useState<ServiceOrder[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,26 +88,42 @@ export default function ServiceOrdersPage() {
   const [productRows, setProductRows] = useState<ProductItemRow[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async (query?: string, status?: string) => {
+  const load = useCallback(async (targetPage: number, query?: string, status?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      setOrders(await getServiceOrders(query, status));
+      const data = await getServiceOrdersPaginated({ page: targetPage, search: query, status });
+      if (requestId !== requestIdRef.current) return;
+      setOrders(data.results);
+      setTotalCount(data.count);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar as ordens de serviço."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (searchRef.current) clearTimeout(searchRef.current);
-    searchRef.current = setTimeout(() => void load(search, statusFilter), 300);
-    return () => {
-      if (searchRef.current) clearTimeout(searchRef.current);
-    };
-  }, [search, statusFilter, load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch, statusFilter);
+  }, [page, debouncedSearch, statusFilter, load]);
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
@@ -297,7 +318,7 @@ export default function ServiceOrdersPage() {
       });
       toast.success(`OS #${created.number} criada com sucesso.`);
       setDialogOpen(false);
-      await load(search, statusFilter);
+      await load(page, debouncedSearch, statusFilter);
     } catch (error) {
       setFieldErrors(extractFieldErrors(error));
       toast.error(extractApiErrorMessage(error, "Não foi possível criar a ordem de serviço."));
@@ -319,7 +340,10 @@ export default function ServiceOrdersPage() {
         <FormSelect
           label="Filtrar por status"
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
         >
           <option value="">Todos os status</option>
           {(Object.keys(STATUS_LABELS) as ServiceOrderStatus[]).map((status) => (
@@ -379,9 +403,12 @@ export default function ServiceOrdersPage() {
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {orders.length} ordem(ns) de serviço exibida(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="ordem(ns) de serviço"
+            />
           </>
         )}
       </div>

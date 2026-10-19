@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconLoader2, IconPencil, IconTrash, IconCheck, IconX, IconMoodSad } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField, FormTextarea } from "@/components/ui/form";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getAppointments,
+  getAppointmentsPaginated,
   createAppointment,
   updateAppointment,
   deleteAppointment,
@@ -18,6 +19,7 @@ import {
 import { getClients } from "@/services/client.service";
 import { getVehicles } from "@/services/vehicle.service";
 import { getEmployees } from "@/services/employee.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
 import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
@@ -68,6 +70,8 @@ function toTimeInput(iso: string): string {
 
 export default function AgendaPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [clientLabel, setClientLabel] = useState("");
   const [vehicleLabel, setVehicleLabel] = useState("");
@@ -75,6 +79,7 @@ export default function AgendaPage() {
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -84,26 +89,50 @@ export default function AgendaPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<Appointment | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setAppointments(
-        await getAppointments({
-          ...(dateFrom ? { date_from: dateFrom } : {}),
-          ...(dateTo ? { date_to: dateTo } : {}),
-        }),
-      );
-    } catch (error) {
-      toast.error(extractApiErrorMessage(error, "Não foi possível carregar a agenda."));
-    } finally {
-      setLoading(false);
-    }
-  }, [dateFrom, dateTo]);
+  const load = useCallback(
+    async (targetPage: number, query?: string, from?: string, to?: string) => {
+      const requestId = ++requestIdRef.current;
+      setLoading(true);
+      try {
+        const data = await getAppointmentsPaginated({
+          page: targetPage,
+          search: query,
+          ...(from ? { date_from: from } : {}),
+          ...(to ? { date_to: to } : {}),
+        });
+        if (requestId !== requestIdRef.current) return;
+        setAppointments(data.results);
+        setTotalCount(data.count);
+      } catch (error) {
+        if (requestId !== requestIdRef.current) return;
+        if (targetPage > 1 && isInvalidPageError(error)) {
+          setPage((current) => Math.max(1, current - 1));
+          return;
+        }
+        toast.error(extractApiErrorMessage(error, "Não foi possível carregar a agenda."));
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch, dateFrom, dateTo);
+  }, [page, debouncedSearch, dateFrom, dateTo, load]);
 
   const searchClients = useCallback(async (term: string): Promise<SearchableOption[]> => {
     const list = await getClients(term || undefined);
@@ -135,15 +164,6 @@ export default function AgendaPage() {
       secondary: employee.email ?? undefined,
     }));
   }, []);
-
-
-
-  const filtered = appointments.filter((appointment) =>
-    search
-      ? appointment.client.name.toLowerCase().includes(search.toLowerCase()) ||
-        (appointment.vehicle.license_plate ?? "").toLowerCase().includes(search.toLowerCase())
-      : true,
-  );
 
   function openCreate() {
     setEditingId(null);
@@ -207,7 +227,7 @@ export default function AgendaPage() {
         toast.success("Agendamento criado com sucesso.");
       }
       setDialogOpen(false);
-      await load();
+      await load(page, debouncedSearch, dateFrom, dateTo);
     } catch (error) {
       setFieldErrors(extractFieldErrors(error));
       toast.error(extractApiErrorMessage(error, "Não foi possível salvar o agendamento."));
@@ -220,7 +240,7 @@ export default function AgendaPage() {
     try {
       await changeAppointmentStatus(appointment.id, status);
       toast.success(`Agendamento marcado como "${APPOINTMENT_STATUS_LABELS[status]}".`);
-      await load();
+      await load(page, debouncedSearch, dateFrom, dateTo);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível alterar o status."));
     }
@@ -233,7 +253,7 @@ export default function AgendaPage() {
       await deleteAppointment(deleteTarget.id);
       toast.success("Agendamento removido com sucesso.");
       setDeleteTarget(null);
-      await load();
+      await load(page, debouncedSearch, dateFrom, dateTo);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível remover o agendamento."));
     } finally {
@@ -255,13 +275,19 @@ export default function AgendaPage() {
           label="De"
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => {
+            setDateFrom(e.target.value);
+            setPage(1);
+          }}
         />
         <FormField
           label="Até"
           type="date"
           value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
+          onChange={(e) => {
+            setDateTo(e.target.value);
+            setPage(1);
+          }}
         />
       </div>
 
@@ -270,7 +296,7 @@ export default function AgendaPage() {
           <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
             <IconLoader2 size={18} className="animate-spin" /> Carregando agenda...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : appointments.length === 0 ? (
           <p className="p-10 text-center text-sm text-muted-foreground">
             {dateFrom || dateTo || search
               ? "Nenhum agendamento encontrado para os filtros."
@@ -290,7 +316,7 @@ export default function AgendaPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((appointment) => (
+                {appointments.map((appointment) => (
                   <tr key={appointment.id} className="border-b border-border/50 last:border-0">
                     <td className="px-4 py-3">
                       <p className="font-medium">{formatDateTime(appointment.scheduled_at)}</p>
@@ -366,9 +392,12 @@ export default function AgendaPage() {
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {filtered.length} agendamento(s) exibido(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="agendamento(s)"
+            />
           </>
         )}
       </div>

@@ -6,46 +6,67 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
 import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getVehicles,
+  getVehiclesPaginated,
   deleteVehicle,
   type Vehicle,
 } from "@/services/vehicle.service";
 import { type Client } from "@/services/client.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { extractApiErrorMessage } from "@/lib/errors";
 
 export default function VehiclesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [newClient, setNewClient] = useState<Client | null>(null);
-  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async (query?: string) => {
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      setVehicles(await getVehicles(query));
+      const data = await getVehiclesPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setVehicles(data.results);
+      setTotalCount(data.count);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar os veículos."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (searchRef.current) clearTimeout(searchRef.current);
-    searchRef.current = setTimeout(() => void load(search), 300);
-    return () => {
-      if (searchRef.current) clearTimeout(searchRef.current);
-    };
-  }, [search, load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
@@ -76,7 +97,7 @@ export default function VehiclesPage() {
       await deleteVehicle(deleteTarget.id);
       toast.success("Veículo removido com sucesso.");
       setDeleteTarget(null);
-      await load(search);
+      await load(page, debouncedSearch);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível remover o veículo."));
     } finally {
@@ -154,9 +175,12 @@ export default function VehiclesPage() {
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {vehicles.length} veículo(s) exibido(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="veículo(s)"
+            />
           </>
         )}
       </div>
@@ -166,7 +190,7 @@ export default function VehiclesPage() {
         onClose={() => setDialogOpen(false)}
         editing={editing}
         newClient={newClient}
-        onSaved={() => void load(search)}
+        onSaved={() => void load(page, debouncedSearch)}
         onCreateClient={() => setClientDialogOpen(true)}
       />
 

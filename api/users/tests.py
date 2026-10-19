@@ -391,6 +391,35 @@ class UserManagementTests(BaseAuthTestCase):
         second_admin.refresh_from_db()
         self.assertEqual(second_admin.role, Role.MANAGER)
 
+    def test_user_list_supports_search_and_pagination(self):
+        User.objects.create_user(
+            email="ana@oficina.com",
+            password="senhaForte123",
+            full_name="Ana Beatriz",
+            workshop=self.workshop,
+        )
+        User.objects.create_user(
+            email="bruno@oficina.com",
+            password="senhaForte123",
+            full_name="Bruno Lima",
+            workshop=self.workshop,
+        )
+
+        self.client.force_authenticate(self.admin)
+        search_res = self.client.get("/api/users/", {"search": "Ana Beatriz"})
+        self.assertEqual(search_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(search_res.data["count"], 1)
+        self.assertEqual(search_res.data["results"][0]["email"], "ana@oficina.com")
+
+        page1 = self.client.get("/api/users/", {"page": 1, "page_size": 2})
+        self.assertEqual(page1.status_code, status.HTTP_200_OK)
+        self.assertEqual(page1.data["count"], 3)
+        self.assertEqual(len(page1.data["results"]), 2)
+
+        page2 = self.client.get("/api/users/", {"page": 2, "page_size": 2})
+        self.assertEqual(page2.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(page2.data["results"]), 1)
+
 
 @override_settings(REST_FRAMEWORK=REST_FRAMEWORK_NO_THROTTLE)
 class PasswordResetTests(APITestCase):

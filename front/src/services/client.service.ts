@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface Address {
   id: string;
@@ -52,6 +52,21 @@ export async function getClients(search?: string): Promise<Client[]> {
     params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
   });
   return response.data.results;
+}
+
+export async function getClientsPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+}): Promise<Paginated<Client>> {
+  const response = await api.get<Paginated<Client>>("/api/clients/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function getClient(id: string): Promise<Client> {

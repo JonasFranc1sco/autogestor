@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 import { type AddressCreateData, type Address } from "./client.service";
 
 export interface Employee {
@@ -30,6 +30,21 @@ export async function getEmployees(search?: string): Promise<Employee[]> {
     params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
   });
   return response.data.results;
+}
+
+export async function getEmployeesPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+}): Promise<Paginated<Employee>> {
+  const response = await api.get<Paginated<Employee>>("/api/employees/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function createEmployee(data: EmployeeCreateData): Promise<Employee> {

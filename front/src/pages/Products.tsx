@@ -5,11 +5,13 @@ import { IconLoader2, IconPencil, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { ProductFormDialog } from "@/components/dialogs/product-form-dialog";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getProducts,
+  getProductsPaginated,
   deleteProduct,
   type Product,
 } from "@/services/product.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { formatCurrency } from "@/lib/format";
 import { extractApiErrorMessage } from "@/lib/errors";
 
@@ -17,32 +19,51 @@ export default function ProductsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [products, setProducts] = useState<Product[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async (query?: string) => {
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      setProducts(await getProducts(query));
+      const data = await getProductsPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setProducts(data.results);
+      setTotalCount(data.count);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar os produtos."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (searchRef.current) clearTimeout(searchRef.current);
-    searchRef.current = setTimeout(() => void load(search), 300);
-    return () => {
-      if (searchRef.current) clearTimeout(searchRef.current);
-    };
-  }, [search, load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
@@ -70,7 +91,7 @@ export default function ProductsPage() {
       await deleteProduct(deleteTarget.id);
       toast.success("Produto removido com sucesso.");
       setDeleteTarget(null);
-      await load(search);
+      await load(page, debouncedSearch);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível remover o produto."));
     } finally {
@@ -170,9 +191,12 @@ export default function ProductsPage() {
                 })}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {products.length} produto(s) exibido(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="produto(s)"
+            />
           </>
         )}
       </div>
@@ -181,7 +205,7 @@ export default function ProductsPage() {
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         editing={editing}
-        onSaved={() => void load(search)}
+        onSaved={() => void load(page, debouncedSearch)}
       />
 
       <Dialog

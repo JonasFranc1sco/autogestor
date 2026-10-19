@@ -6,14 +6,16 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField, FormTextarea } from "@/components/ui/form";
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getServices,
+  getServicesPaginated,
   createService,
   updateService,
   deleteService,
   type Service,
 } from "@/services/service.service";
 import { getEmployees } from "@/services/employee.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { formatCurrency, tryParseDecimal } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
@@ -37,9 +39,12 @@ export default function ServicesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [services, setServices] = useState<Service[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [employeeLabel, setEmployeeLabel] = useState("");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -47,26 +52,42 @@ export default function ServicesPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async (query?: string) => {
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      setServices(await getServices(query));
+      const data = await getServicesPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setServices(data.results);
+      setTotalCount(data.count);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar os serviços."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (searchRef.current) clearTimeout(searchRef.current);
-    searchRef.current = setTimeout(() => void load(search), 300);
-    return () => {
-      if (searchRef.current) clearTimeout(searchRef.current);
-    };
-  }, [search, load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
@@ -137,7 +158,7 @@ export default function ServicesPage() {
         toast.success("Serviço cadastrado com sucesso.");
       }
       setDialogOpen(false);
-      await load(search);
+      await load(page, debouncedSearch);
     } catch (error) {
       setFieldErrors(extractFieldErrors(error));
       toast.error(extractApiErrorMessage(error, "Não foi possível salvar o serviço."));
@@ -153,7 +174,7 @@ export default function ServicesPage() {
       await deleteService(deleteTarget.id);
       toast.success("Serviço removido com sucesso.");
       setDeleteTarget(null);
-      await load(search);
+      await load(page, debouncedSearch);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível remover o serviço."));
     } finally {
@@ -229,9 +250,12 @@ export default function ServicesPage() {
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {services.length} serviço(s) exibido(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="serviço(s)"
+            />
           </>
         )}
       </div>

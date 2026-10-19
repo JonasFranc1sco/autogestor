@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 from users.models import User, Role
 from users.permissions import IsAdmin, IsManagerOrAdmin, IsOwnerOrAdmin
@@ -8,10 +8,12 @@ from core.tenancy import scope_queryset
 # Create your views here.
 
 class UserViewSet(viewsets.ModelViewSet):
-    
+    filter_backends = [filters.SearchFilter]
+    search_fields = ["full_name", "email"]
+
     def get_queryset(self): #type: ignore
         queryset = scope_queryset(self.request.user, User.objects.all())
-        
+
         return queryset.filter(is_active=True).order_by("full_name")
     
     

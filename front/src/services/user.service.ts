@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export type UserRole = "ADMIN" | "MANAGER" | "MECHANIC" | "ATTENDANT";
 
@@ -30,6 +30,21 @@ export async function getUsers(): Promise<User[]> {
     params: { page_size: LIST_PAGE_SIZE },
   });
   return response.data.results;
+}
+
+export async function getUsersPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+}): Promise<Paginated<User>> {
+  const response = await api.get<Paginated<User>>("/api/users/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function createUser(data: UserCreateData): Promise<User> {

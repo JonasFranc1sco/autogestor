@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface Product {
   id: string;
@@ -44,6 +44,21 @@ export async function getProducts(search?: string): Promise<Product[]> {
     params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
   });
   return response.data.results;
+}
+
+export async function getProductsPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+}): Promise<Paginated<Product>> {
+  const response = await api.get<Paginated<Product>>("/api/products/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function createProduct(data: ProductCreateData): Promise<Product> {

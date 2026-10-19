@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export type MovementType = "IN" | "OUT" | "ADJUST";
 
@@ -38,6 +38,25 @@ export async function getStockMovements(filters?: {
     params: { page_size: LIST_PAGE_SIZE, ...filters },
   });
   return response.data.results;
+}
+
+export async function getStockMovementsPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  product?: string;
+  movement_type?: string;
+}): Promise<Paginated<StockMovement>> {
+  const response = await api.get<Paginated<StockMovement>>("/api/stock-movements/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+      ...(params?.product ? { product: params.product } : {}),
+      ...(params?.movement_type ? { movement_type: params.movement_type } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function createStockMovement(data: StockMovementCreateData): Promise<StockMovement> {

@@ -6,13 +6,15 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { AddressForm, emptyAddress, validateAddress, type AddressFormValues } from "@/components/layout/AddressForm";
 import { FormField } from "@/components/ui/form";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getEmployees,
+  getEmployeesPaginated,
   createEmployee,
   updateEmployee,
   deleteEmployee,
   type Employee,
 } from "@/services/employee.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { maskCpfCnpj, maskPhone, isValidCpfCnpj, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
@@ -38,8 +40,11 @@ export default function EmployeesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -47,26 +52,42 @@ export default function EmployeesPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async (query?: string) => {
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      setEmployees(await getEmployees(query));
+      const data = await getEmployeesPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setEmployees(data.results);
+      setTotalCount(data.count);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar os funcionários."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (searchRef.current) clearTimeout(searchRef.current);
-    searchRef.current = setTimeout(() => void load(search), 300);
-    return () => {
-      if (searchRef.current) clearTimeout(searchRef.current);
-    };
-  }, [search, load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
@@ -147,7 +168,7 @@ export default function EmployeesPage() {
         toast.success("Funcionário cadastrado com sucesso.");
       }
       setDialogOpen(false);
-      await load(search);
+      await load(page, debouncedSearch);
     } catch (error) {
       setFieldErrors(extractFieldErrors(error));
       toast.error(extractApiErrorMessage(error, "Não foi possível salvar o funcionário."));
@@ -163,7 +184,7 @@ export default function EmployeesPage() {
       await deleteEmployee(deleteTarget.id);
       toast.success("Funcionário removido com sucesso.");
       setDeleteTarget(null);
-      await load(search);
+      await load(page, debouncedSearch);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível remover o funcionário."));
     } finally {
@@ -238,9 +259,12 @@ export default function EmployeesPage() {
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {employees.length} funcionário(s) exibido(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="funcionário(s)"
+            />
           </>
         )}
       </div>

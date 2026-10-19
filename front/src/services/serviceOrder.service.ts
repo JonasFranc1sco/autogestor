@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export type ServiceOrderStatus =
   | "OPEN"
@@ -155,6 +155,23 @@ export async function getServiceOrders(search?: string, status?: string): Promis
     },
   });
   return response.data.results;
+}
+
+export async function getServiceOrdersPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: string;
+}): Promise<Paginated<ServiceOrder>> {
+  const response = await api.get<Paginated<ServiceOrder>>("/api/service-orders/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+      ...(params?.status ? { status: params.status } : {}),
+    },
+  });
+  return response.data;
 }
 
 export async function getServiceOrder(id: string): Promise<ServiceOrder> {

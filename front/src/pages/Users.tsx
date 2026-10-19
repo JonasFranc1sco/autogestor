@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconLoader2, IconPencil, IconUserOff } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField, FormSelect } from "@/components/ui/form";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getUsers,
+  getUsersPaginated,
   createUser,
   updateUser,
   deactivateUser,
@@ -13,6 +14,7 @@ import {
   type User,
   type UserRole,
 } from "@/services/user.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -34,8 +36,11 @@ export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "ADMIN";
   const [users, setUsers] = useState<User[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -43,28 +48,42 @@ export default function UsersPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [deactivateTarget, setDeactivateTarget] = useState<User | null>(null);
   const [deactivating, setDeactivating] = useState(false);
+  const requestIdRef = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      setUsers(await getUsers());
+      const data = await getUsersPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setUsers(data.results);
+      setTotalCount(data.count);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar os usuários."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
 
-  const filtered = users.filter((user) =>
-    search
-      ? user.full_name.toLowerCase().includes(search.toLowerCase()) ||
-        user.email.toLowerCase().includes(search.toLowerCase())
-      : true,
-  );
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
 
   function openCreate() {
     setEditingId(null);
@@ -112,7 +131,7 @@ export default function UsersPage() {
         toast.success("Usuário criado com sucesso.");
       }
       setDialogOpen(false);
-      await load();
+      await load(page, debouncedSearch);
     } catch (error) {
       setFieldErrors(extractFieldErrors(error));
       toast.error(extractApiErrorMessage(error, "Não foi possível salvar o usuário."));
@@ -128,7 +147,7 @@ export default function UsersPage() {
       await deactivateUser(deactivateTarget.id);
       toast.success("Usuário desativado com sucesso.");
       setDeactivateTarget(null);
-      await load();
+      await load(page, debouncedSearch);
     } catch (error) {
       toast.error(extractApiErrorMessage(error, "Não foi possível desativar o usuário."));
     } finally {
@@ -155,7 +174,7 @@ export default function UsersPage() {
           <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
             <IconLoader2 size={18} className="animate-spin" /> Carregando usuários...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : users.length === 0 ? (
           <p className="p-10 text-center text-sm text-muted-foreground">
             {search ? "Nenhum usuário encontrado para esta busca." : "Nenhum usuário cadastrado ainda."}
           </p>
@@ -171,7 +190,7 @@ export default function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((user) => (
+                {users.map((user) => (
                   <tr key={user.id} className="border-b border-border/50 last:border-0">
                     <td className="px-4 py-3">
                       <p className="font-medium">{user.full_name}</p>
@@ -215,9 +234,12 @@ export default function UsersPage() {
                 ))}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {filtered.length} usuário(s) exibido(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="usuário(s)"
+            />
           </>
         )}
       </div>

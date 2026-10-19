@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { IconLoader2, IconArrowDown, IconArrowUp, IconAdjustments } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField, FormSelect, FormTextarea } from "@/components/ui/form";
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
+import { Pagination } from "@/components/ui/pagination";
 import {
-  getStockMovements,
+  getStockMovementsPaginated,
   createStockMovement,
   MOVEMENT_TYPE_LABELS,
   type StockMovement,
   type MovementType,
 } from "@/services/stock.service";
 import { getProducts, type Product } from "@/services/product.service";
+import { isInvalidPageError } from "@/services/pagination";
 import { formatDateTime } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
@@ -44,9 +46,12 @@ const emptyForm: FormValues = {
 
 export default function StockPage() {
   const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [productFilter, setProductFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,6 +59,7 @@ export default function StockPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [productLabel, setProductLabel] = useState("");
   const [filterLabel, setFilterLabel] = useState("");
+  const requestIdRef = useRef(0);
 
   const searchProducts = useCallback(async (term: string): Promise<SearchableOption[]> => {
     const list = await getProducts(term || undefined);
@@ -64,32 +70,48 @@ export default function StockPage() {
     }));
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetPage: number, query?: string, productId?: string) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      const [movementList, productList] = await Promise.all([
-        getStockMovements(productFilter ? { product: productFilter } : undefined),
+      const [movementData, productList] = await Promise.all([
+        getStockMovementsPaginated({
+          page: targetPage,
+          search: query,
+          product: productId || undefined,
+        }),
         getProducts(),
       ]);
-      setMovements(movementList);
+      if (requestId !== requestIdRef.current) return;
+      setMovements(movementData.results);
+      setTotalCount(movementData.count);
       setProducts(productList);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
       toast.error(extractApiErrorMessage(error, "Não foi possível carregar o estoque."));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [productFilter]);
+  }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
 
-  const filtered = movements.filter((movement) =>
-    search
-      ? movement.product_name.toLowerCase().includes(search.toLowerCase()) ||
-        movement.reason.toLowerCase().includes(search.toLowerCase())
-      : true,
-  );
+  useEffect(() => {
+    void load(page, debouncedSearch, productFilter);
+  }, [page, debouncedSearch, productFilter, load]);
 
   const lowStock = products.filter(
     (product) => product.min_stock_quantity != null && product.stock_quantity <= product.min_stock_quantity,
@@ -135,7 +157,7 @@ export default function StockPage() {
       });
       toast.success("Movimentação registrada com sucesso.");
       setDialogOpen(false);
-      await load();
+      await load(page, debouncedSearch, productFilter);
     } catch (error) {
       setFieldErrors(extractFieldErrors(error));
       toast.error(extractApiErrorMessage(error, "Não foi possível registrar a movimentação."));
@@ -173,6 +195,7 @@ export default function StockPage() {
           onChange={(id, option) => {
             setProductFilter(id ?? "");
             setFilterLabel(option?.primary ?? "");
+            setPage(1);
           }}
           searchOptions={searchProducts}
           placeholder="Todos os produtos"
@@ -184,9 +207,11 @@ export default function StockPage() {
           <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
             <IconLoader2 size={18} className="animate-spin" /> Carregando movimentações...
           </div>
-        ) : filtered.length === 0 ? (
+        ) : movements.length === 0 ? (
           <p className="p-10 text-center text-sm text-muted-foreground">
-            Nenhuma movimentação de estoque registrada.
+            {search || productFilter
+              ? "Nenhuma movimentação encontrada para os filtros."
+              : "Nenhuma movimentação de estoque registrada."}
           </p>
         ) : (
           <>
@@ -202,7 +227,7 @@ export default function StockPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((movement) => {
+                {movements.map((movement) => {
                   const Icon = movementIcon[movement.movement_type];
                   return (
                     <tr key={movement.id} className="border-b border-border/50 last:border-0">
@@ -226,9 +251,12 @@ export default function StockPage() {
                 })}
               </tbody>
             </table>
-            <p className="px-4 py-3 text-xs text-muted-foreground">
-              {filtered.length} movimentação(ões) exibida(s)
-            </p>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="movimentação(ões)"
+            />
           </>
         )}
       </div>
