@@ -14,7 +14,7 @@ REST_FRAMEWORK_NO_THROTTLE = {
         "rest_framework.permissions.IsAuthenticated",
     ),
     "DEFAULT_THROTTLE_CLASSES": [],
-    "DEFAULT_THROTTLE_RATES": {"auth": "1000/min"},
+    "DEFAULT_THROTTLE_RATES": {"auth": "1000/min", "register": "1000/min"},
 }
 
 
@@ -286,6 +286,110 @@ class UserManagementTests(BaseAuthTestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["workshop"]["name"], "Oficina do Zé")
+        
+    def test_admin_can_deactivate_another_user(self):
+        target = User.objects.create_user(
+            email="mecanico@oficina.com",
+            password="senhaForte123",
+            full_name="Mecânico Alvo",
+            role=Role.MECHANIC,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.delete(f"/api/users/{target.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        target.refresh_from_db()
+        self.assertFalse(target.is_active)
+
+    def test_admin_can_deactivate_second_admin(self):
+        second_admin = User.objects.create_user(
+            email="admin2@oficina.com",
+            password="senhaForte123",
+            full_name="Segundo Admin",
+            role=Role.ADMIN,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.delete(f"/api/users/{second_admin.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        second_admin.refresh_from_db()
+        self.assertFalse(second_admin.is_active)
+
+    def test_admin_cannot_deactivate_self(self):
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.delete(f"/api/users/{self.admin.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+
+    def test_cannot_deactivate_last_admin_of_workshop(self):
+        platform_superuser = User.objects.create_superuser(
+            email="root@autogestor.com",
+           password="senhaForte123",
+            full_name="Super Admin Plataforma",
+            role=Role.ADMIN,
+            workshop=None,
+        )
+        self.client.force_authenticate(platform_superuser)
+
+        response = self.client.delete(f"/api/users/{self.admin.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+    
+    def test_last_admin_cannot_demote_self(self):
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.patch(
+            f"/api/users/{self.admin.id}/",
+            {"full_name": self.admin.full_name, "role": Role.MANAGER},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.role, Role.ADMIN)
+
+    def test_last_admin_can_still_update_own_name_keeping_admin_role(self):
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.patch(
+            f"/api/users/{self.admin.id}/",
+            {"full_name": "Zé Admin Atualizado", "role": Role.ADMIN},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.full_name, "Zé Admin Atualizado")
+        self.assertEqual(self.admin.role, Role.ADMIN)
+
+    def test_admin_can_demote_second_admin_when_another_active_admin_exists(self):
+        second_admin = User.objects.create_user(
+            email="admin2@oficina.com",
+            password="senhaForte123",
+            full_name="Segundo Admin",
+            role=Role.ADMIN,
+            workshop=self.workshop,
+        )
+        self.client.force_authenticate(self.admin)
+
+        response = self.client.patch(
+            f"/api/users/{second_admin.id}/",
+            {"full_name": second_admin.full_name, "role": Role.MANAGER},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        second_admin.refresh_from_db()
+        self.assertEqual(second_admin.role, Role.MANAGER)
 
 
 @override_settings(REST_FRAMEWORK=REST_FRAMEWORK_NO_THROTTLE)
@@ -351,3 +455,103 @@ class PasswordResetTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+class AuthThrottleSecurityTests(BaseAuthTestCase):
+    def setUp(self):
+        super().setUp()
+        from django.core.cache import cache
+        cache.clear()
+
+    def tearDown(self):
+        from django.core.cache import cache
+        cache.clear()
+        super().tearDown()
+
+    def test_spoofed_xff_cannot_bypass_login_throttle_when_num_proxies_zero(self):
+        from unittest.mock import patch
+        from rest_framework.throttling import SimpleRateThrottle
+
+        throttled_settings = {
+            "DEFAULT_AUTHENTICATION_CLASSES": (
+                "rest_framework_simplejwt.authentication.JWTAuthentication",
+            ),
+            "DEFAULT_PERMISSION_CLASSES": (
+                "rest_framework.permissions.IsAuthenticated",
+            ),
+            "DEFAULT_THROTTLE_CLASSES": [
+                "rest_framework.throttling.ScopedRateThrottle",
+            ],
+            "DEFAULT_THROTTLE_RATES": {"auth": "2/min", "register": "2/min"},
+            "NUM_PROXIES": 0,
+        }
+
+        with (
+            override_settings(REST_FRAMEWORK=throttled_settings),
+            patch.dict(SimpleRateThrottle.THROTTLE_RATES, {"auth": "2/min"}),
+        ):
+            for spoofed_ip in ("10.0.0.1", "10.0.0.2"):
+                res = self.client.post(
+                    "/api/auth/login/",
+                    {"email": "admin@oficina.com", "password": "errada"},
+                    format="json",
+                    HTTP_X_FORWARDED_FOR=spoofed_ip,
+                )
+                self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+            # 3ª tentativa com outro X-Forwarded-For forjado deve ser bloqueada (429)
+            blocked = self.client.post(
+                "/api/auth/login/",
+                {"email": "admin@oficina.com", "password": "errada"},
+                format="json",
+                HTTP_X_FORWARDED_FOR="10.0.0.3",
+            )
+            self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_proxy_xff_isolates_clients_and_blocks_header_spoofing(self):
+        from unittest.mock import patch
+        from rest_framework.throttling import SimpleRateThrottle
+
+        throttled_settings = {
+            "DEFAULT_AUTHENTICATION_CLASSES": (
+                "rest_framework_simplejwt.authentication.JWTAuthentication",
+            ),
+            "DEFAULT_PERMISSION_CLASSES": (
+                "rest_framework.permissions.IsAuthenticated",
+            ),
+            "DEFAULT_THROTTLE_CLASSES": [
+                "rest_framework.throttling.ScopedRateThrottle",
+            ],
+            "DEFAULT_THROTTLE_RATES": {"auth": "2/min", "register": "2/min"},
+            "NUM_PROXIES": 1,
+        }
+
+        with (
+            override_settings(REST_FRAMEWORK=throttled_settings),
+            patch.dict(SimpleRateThrottle.THROTTLE_RATES, {"auth": "2/min"}),
+        ):
+            # Atacante (IP real 203.0.113.10 adicionado pelo Nginx ao final do XFF)
+            for fake_prefix in ("1.1.1.1", "2.2.2.2"):
+                res = self.client.post(
+                    "/api/auth/login/",
+                    {"email": "admin@oficina.com", "password": "errada"},
+                    format="json",
+                    HTTP_X_FORWARDED_FOR=f"{fake_prefix}, 203.0.113.10",
+                )
+                self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+            blocked = self.client.post(
+                "/api/auth/login/",
+                {"email": "admin@oficina.com", "password": "errada"},
+                format="json",
+                HTTP_X_FORWARDED_FOR="3.3.3.3, 203.0.113.10",
+            )
+            self.assertEqual(blocked.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+            # Outro cliente legítimo (IP real 198.51.100.25) não é afetado pelo bloqueio
+            legit = self.client.post(
+                "/api/auth/login/",
+                {"email": "admin@oficina.com", "password": "senhaForte123"},
+                format="json",
+                HTTP_X_FORWARDED_FOR="198.51.100.25",
+            )
+            self.assertEqual(legit.status_code, status.HTTP_200_OK)

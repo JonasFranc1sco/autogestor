@@ -46,7 +46,7 @@ class RegisterView(APIView):
 
     permission_classes = []
 
-    throttle_scope = "auth"
+    throttle_scope = "register"
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
