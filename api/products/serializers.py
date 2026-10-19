@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 from .models import Product, StockMovement
 from core.tenancy import TenantPrimaryKeyRelatedField
@@ -46,13 +47,45 @@ class ProductsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "A quantidade em estoque não pode ser negativa."
             )
+        if self.instance is not None and value != self.instance.stock_quantity:
+            raise serializers.ValidationError(
+                "O saldo de estoque não pode ser alterado diretamente na edição do produto. Utilize a moventação de estoque"
+            )
         return value
-
+    
+    @transaction.atomic
+    def create(self, validated_data):
+        from products.services.stock import StockService
+        
+        initial_stock = validated_data.pop("stock_quantity", 0) or 0
+        validated_data["stock_quantity"] = 0
+        product = super().create(validated_data)
+        
+        if initial_stock > 0:
+            request = self.context.get("request")
+            user = (
+                request.user
+                if request is not None and request.user.is_authenticated
+                else None
+            )
+            StockService.register_movement(
+                product=product,
+                movement_type=StockMovement.MovementType.IN,
+                quantity=initial_stock,
+                reason="Estoque inicial no cadastro",
+                user=user
+            )
+        return product
+    
+    def update(self, instance, validated_data):
+        validated_data.pop("stock_quantity", None)
+        return super().update(instance, validated_data)
+    
     def to_representation(self, instance):
         data = super().to_representation(instance)
         request = self.context.get("request")
         if request is not None and request.user.is_authenticated:
-            if request.user.role not in (Role.ADMIN, Role.MANAGER) and not request.user.is_superuser:
+            if request.user.role not in (Role.ADMIN, Role.MANAGER, Role.ATTENDANT) and not request.user.is_superuser:
                 for field in HIDDEN_COST_FIELDS:
                     data.pop(field, None)
         return data
