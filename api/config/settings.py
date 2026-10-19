@@ -115,9 +115,24 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         # Proteção de força bruta; configurável por ambiente (dev/suítes sobem o limite).
         'auth': os.environ.get('THROTTLE_AUTH', '20/min'),
+        'register': os.environ.get('THROTTLE_REGISTER', '5/hour'),
         'lookup': os.environ.get('THROTTLE_LOOKUP', '60/min'),
     },
+    'NUM_PROXIES': int(os.environ.get('NUM_PROXIES', '0' if (DEBUG or TESTING) else '1')),
 }
+if TESTING:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+            'LOCATION': os.environ.get('CACHE_LOCATION', '/tmp/autogestor_cache')
+        }
+    }
 
 AUTH_USER_MODEL = "users.User"
 
