@@ -77,11 +77,11 @@ export function ProductFormDialog({ open, onClose, editing, onSaved }: ProductFo
   function validate(): boolean {
     const errors: Record<string, string> = {};
     if (!form.name.trim()) errors.name = "Informe o nome do produto.";
-    if (!editing && tryParseDecimal(form.cost_price) === null) {
+    if (tryParseDecimal(form.cost_price) === null) {
       errors.cost_price = "Informe o preço de custo.";
     }
     if (tryParseDecimal(form.sale_price) === null) errors.sale_price = "Informe o preço de venda.";
-    if (Number(form.stock_quantity) < 0 || Number.isNaN(Number(form.stock_quantity))) {
+    if (!editing && (Number(form.stock_quantity) < 0 || Number.isNaN(Number(form.stock_quantity)))) {
       errors.stock_quantity = "Informe uma quantidade válida (≥ 0).";
     }
     setFieldErrors(errors);
@@ -103,7 +103,6 @@ export function ProductFormDialog({ open, onClose, editing, onSaved }: ProductFo
       supplier: form.supplier.trim() || null,
       brand: form.brand.trim() || null,
       sale_price: tryParseDecimal(form.sale_price) ?? "0.00",
-      stock_quantity: Number(form.stock_quantity) || 0,
       min_stock_quantity: form.min_stock_quantity ? Number(form.min_stock_quantity) : null,
       location: form.location.trim() || null,
     };
@@ -122,6 +121,7 @@ export function ProductFormDialog({ open, onClose, editing, onSaved }: ProductFo
           ...basePayload,
           cost_price: parsedCost ?? "0.00",
           margin_percentage: parsedMargin ?? "0.00",
+          stock_quantity: Number(form.stock_quantity) || 0,
         });
         toast.success("Produto cadastrado com sucesso.");
         onSaved(created);
@@ -210,10 +210,11 @@ export function ProductFormDialog({ open, onClose, editing, onSaved }: ProductFo
         />
 
         <FormField
-          label="Estoque atual"
+          label={editing ? "Estoque atual (ajustar em Estoque)" : "Estoque atual"}
           type="number"
           value={form.stock_quantity}
           onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })}
+          disabled={Boolean(editing)}
           error={fieldErrors.stock_quantity}
         />
 

@@ -37,7 +37,7 @@ export interface ProductCreateData {
   location?: string | null;
 }
 
-export type ProductUpdateData = Partial<ProductCreateData>;
+export type ProductUpdateData = Omit<Partial<ProductCreateData>, "stock_quantity">;
 
 export async function getProducts(search?: string): Promise<Product[]> {
   const response = await api.get<Paginated<Product>>("/api/products/", {
