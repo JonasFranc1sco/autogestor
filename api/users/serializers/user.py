@@ -52,12 +52,21 @@ class UserUpdateSerializer(ModelSerializer):
         
         if not request:
             raise serializers.ValidationError(
-                "Request context is required."
+                "Contexto da requisição é obrigatório."
             )
             
-        if request.user.role != Role.ADMIN:
+        if request.user.role != Role.ADMIN and not request.user.is_superuser:
             raise serializers.ValidationError(
-                "Only administrators can change users roles."
+                "Apenas administradores podem alterar o papel do usuário."
             )
-            
+        if (self.instance is not None and self.instance.role == Role.ADMIN and value != Role.ADMIN):
+            other_admins =  User.objects.filter(
+                workshop=self.instance.workshop,
+                role=Role.ADMIN,
+                is_active=True,
+            ).exclude(pk=self.instance.pk)
+            if not other_admins.exists():
+                raise serializers.ValidationError(
+                    "Não é possível alterar o papel do útimo administrador da oficina."
+                )
         return value

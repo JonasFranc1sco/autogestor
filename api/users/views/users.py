@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from users.models import User
+from users.models import User, Role
 from users.permissions import IsAdmin, IsManagerOrAdmin, IsOwnerOrAdmin
 from users.serializers.user import UserUpdateSerializer, UserCreateSerializer, UserListSerializer, UserDetailSerializer
 from core.tenancy import scope_queryset
