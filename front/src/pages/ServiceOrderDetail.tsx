@@ -37,6 +37,7 @@ import {
   type ServiceOrderAttachment,
 } from "@/services/serviceOrder.service";
 import { getEmployees } from "@/services/employee.service";
+import { getUsers } from "@/services/user.service";
 import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
 import { formatCurrency, formatDateTime, parseDecimalValue, tryParseDecimal } from "@/lib/format";
@@ -47,6 +48,8 @@ interface ServiceItemRow {
   key: number;
   service_id: string;
   service_name: string;
+  mechanic_id: string;
+  mechanic_label?: string;
   price: string;
   discount: string;
   label?: string;
@@ -55,6 +58,8 @@ interface ServiceItemRow {
 interface ProductItemRow {
   key: number;
   product_id: string;
+  seller_id: string;
+  seller_label?: string;
   quantity: string;
   price: string;
   discount: string;
@@ -85,13 +90,11 @@ export default function ServiceOrderDetailPage() {
   const [editing, setEditing] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
 
-  const [mechanicLabel, setMechanicLabel] = useState("");
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [productDialogRowKey, setProductDialogRowKey] = useState<number | null>(null);
   const productCache = useRef(new Map<string, Product>());
   const serviceCache = useRef(new Map<string, Service>());
 
-  const [mechanicId, setMechanicId] = useState("");
   const [observations, setObservations] = useState("");
   const [serviceRows, setServiceRows] = useState<ServiceItemRow[]>([]);
   const [productRows, setProductRows] = useState<ProductItemRow[]>([]);
@@ -109,8 +112,6 @@ export default function ServiceOrderDetailPage() {
     try {
       const data = await getServiceOrder(id);
       setOrder(data);
-      setMechanicId(data.mechanic?.id ?? "");
-      setMechanicLabel(data.mechanic?.name ?? "");
       setObservations(data.observations ?? "");
       setOdometer(data.odometer != null ? String(data.odometer) : "");
       setServiceRows(
@@ -118,6 +119,8 @@ export default function ServiceOrderDetailPage() {
           key: ++rowKey,
           service_id: item.service?.id ?? "",
           service_name: "",
+          mechanic_id: item.mechanic?.id ?? "",
+          mechanic_label: item.mechanic?.name ?? "",
           label: item.service?.name ?? "",
           price: String(item.price),
           discount: String(item.discount ?? 0),
@@ -127,6 +130,8 @@ export default function ServiceOrderDetailPage() {
         (data.products ?? []).map((item) => ({
           key: ++rowKey,
           product_id: item.product?.id ?? "",
+          seller_id: item.seller?.id ?? "",
+          seller_label: item.seller?.full_name ?? "",
           label: item.product?.name ?? "",
           quantity: String(item.quantity),
           price: String(item.price),
@@ -158,6 +163,15 @@ export default function ServiceOrderDetailPage() {
       id: employee.id,
       primary: employee.name,
       secondary: employee.email ?? undefined,
+    }));
+  }, []);
+
+  const searchUsers = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getUsers(term || undefined);
+    return list.map((u) => ({
+      id: u.id,
+      primary: u.full_name,
+      secondary: u.email,
     }));
   }, []);
 
@@ -237,23 +251,24 @@ export default function ServiceOrderDetailPage() {
     try {
       const payload = canEditItems
         ? {
-            mechanic_id: mechanicId || null,
             observations,
             odometer: odometer.trim() ? Number(odometer) : null,
             services: serviceRows.map((row) => ({
               service_id: row.service_id || null,
               service_name: row.service_id ? undefined : row.service_name.trim() || undefined,
+              mechanic_id: row.mechanic_id || null,
               price: parseDecimalValue(row.price).toFixed(2),
               discount: parseDecimalValue(row.discount).toFixed(2),
             })),
             products: productRows.map((row) => ({
               product_id: row.product_id,
+              seller_id: row.seller_id || null,
               quantity: Number(row.quantity) || 1,
               price: parseDecimalValue(row.price).toFixed(2),
               discount: parseDecimalValue(row.discount).toFixed(2),
             })),
           }
-        : { mechanic_id: mechanicId || null, observations };
+        : { observations };
 
       const updated = await updateServiceOrder(order.id, payload);
       setOrder(updated);
@@ -400,8 +415,8 @@ export default function ServiceOrderDetailPage() {
         </div>
 
         <div className="rounded-2xl border border-border bg-surface p-5">
-          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Mecânico responsável</h2>
-          {editing && canEditItems && (
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Dados do Atendimento</h2>
+          {editing && canEditItems ? (
             <div className="mb-2">
               <FormField
                 label="Quilometragem (km)"
@@ -412,26 +427,11 @@ export default function ServiceOrderDetailPage() {
                 placeholder="Ex.: 120000"
               />
             </div>
-          )}
-          {!editing && order.odometer != null && (
-            <p className="mb-1 text-sm text-muted-foreground">{order.odometer} km</p>
-          )}
-          {editing ? (
-            <SearchableSelect
-              label="Mecânico"
-              optional
-              value={mechanicId || null}
-              initialLabel={mechanicLabel || null}
-              onChange={(id, option) => {
-                setMechanicId(id ?? "");
-                setMechanicLabel(option?.primary ?? "");
-              }}
-              searchOptions={searchMechanics}
-              placeholder="Digite o nome do mecânico..."
-            />
           ) : (
             <>
-              <p className="font-medium">{order.mechanic?.name ?? "Não atribuído"}</p>
+              <p className="font-medium">
+                {order.odometer != null ? `${order.odometer} km` : "Hodômetro não informado"}
+              </p>
               {order.closed_at && (
                 <p className="text-sm text-muted-foreground">
                   Encerrada em {formatDateTime(order.closed_at)}
@@ -453,7 +453,7 @@ export default function ServiceOrderDetailPage() {
               onClick={() =>
                 setServiceRows((rows) => [
                   ...rows,
-                  { key: ++rowKey, service_id: "", service_name: "", price: "", discount: "" },
+                  { key: ++rowKey, service_id: "", service_name: "", mechanic_id: "", price: "", discount: "" },
                 ])
               }
             >
@@ -509,6 +509,25 @@ export default function ServiceOrderDetailPage() {
                     />
                   </div>
                 )}
+                <div className={row.service_id ? "sm:col-span-3" : "sm:col-span-4"}>
+                  <SearchableSelect
+                    label="Mecânico"
+                    optional
+                    value={row.mechanic_id || null}
+                    initialLabel={row.mechanic_label || null}
+                    onChange={(id, option) =>
+                      setServiceRows((rows) =>
+                        rows.map((item) =>
+                          item.key === row.key
+                            ? { ...item, mechanic_id: id ?? "", mechanic_label: option?.primary ?? "" }
+                            : item,
+                        ),
+                      )
+                    }
+                    searchOptions={searchMechanics}
+                    placeholder="Selecione o mecânico..."
+                  />
+                </div>
                 <div className="sm:col-span-2">
                   <FormField
                     label="Preço (R$)"
@@ -555,6 +574,7 @@ export default function ServiceOrderDetailPage() {
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                 <th className="py-2">Serviço</th>
+                <th className="py-2">Mecânico</th>
                 <th className="py-2 text-right">Preço</th>
                 <th className="py-2 text-right">Desconto</th>
                 <th className="py-2 text-right">Total</th>
@@ -564,6 +584,7 @@ export default function ServiceOrderDetailPage() {
               {(order.services ?? []).map((item) => (
                 <tr key={item.id} className="border-b border-border/50 last:border-0">
                   <td className="py-2">{item.service?.name ?? "Serviço"}</td>
+                  <td className="py-2 text-muted-foreground">{item.mechanic?.name ?? "—"}</td>
                   <td className="py-2 text-right">{formatCurrency(item.price)}</td>
                   <td className="py-2 text-right">{formatCurrency(item.discount ?? 0)}</td>
                   <td className="py-2 text-right font-medium">{formatCurrency(item.total_price ?? 0)}</td>
@@ -585,7 +606,7 @@ export default function ServiceOrderDetailPage() {
               onClick={() =>
                 setProductRows((rows) => [
                   ...rows,
-                  { key: ++rowKey, product_id: "", quantity: "1", price: "", discount: "" },
+                  { key: ++rowKey, product_id: "", seller_id: "", quantity: "1", price: "", discount: "" },
                 ])
               }
             >
@@ -600,7 +621,7 @@ export default function ServiceOrderDetailPage() {
           <div className="space-y-3">
             {productRows.map((row) => (
               <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
-                <div className="sm:col-span-4">
+                <div className="sm:col-span-3">
                   <SearchableSelect
                     label="Produto"
                     value={row.product_id || null}
@@ -629,7 +650,26 @@ export default function ServiceOrderDetailPage() {
                     }}
                   />
                 </div>
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3">
+                  <SearchableSelect
+                    label="Vendedor (Atendente)"
+                    optional
+                    value={row.seller_id || null}
+                    initialLabel={row.seller_label || null}
+                    onChange={(id, option) =>
+                      setProductRows((rows) =>
+                        rows.map((item) =>
+                          item.key === row.key
+                            ? { ...item, seller_id: id ?? "", seller_label: option?.primary ?? "" }
+                            : item,
+                        ),
+                      )
+                    }
+                    searchOptions={searchUsers}
+                    placeholder="Selecione o vendedor..."
+                  />
+                </div>
+                <div className="sm:col-span-1">
                   <FormField
                     label="Qtd."
                     type="number"
@@ -690,6 +730,7 @@ export default function ServiceOrderDetailPage() {
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                 <th className="py-2">Produto</th>
+                <th className="py-2">Vendedor</th>
                 <th className="py-2 text-right">Qtd.</th>
                 <th className="py-2 text-right">Preço</th>
                 <th className="py-2 text-right">Desconto</th>
@@ -700,6 +741,7 @@ export default function ServiceOrderDetailPage() {
               {(order.products ?? []).map((item) => (
                 <tr key={item.id} className="border-b border-border/50 last:border-0">
                   <td className="py-2">{item.product?.name ?? "Produto"}</td>
+                  <td className="py-2 text-muted-foreground">{item.seller?.full_name ?? "—"}</td>
                   <td className="py-2 text-right">{item.quantity}</td>
                   <td className="py-2 text-right">{formatCurrency(item.price)}</td>
                   <td className="py-2 text-right">{formatCurrency(item.discount ?? 0)}</td>

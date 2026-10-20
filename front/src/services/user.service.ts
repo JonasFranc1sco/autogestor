@@ -25,9 +25,9 @@ export interface UserCreateData {
   role?: UserRole;
 }
 
-export async function getUsers(): Promise<User[]> {
+export async function getUsers(search?: string): Promise<User[]> {
   const response = await api.get<Paginated<User>>("/api/users/", {
-    params: { page_size: LIST_PAGE_SIZE },
+    params: { page_size: LIST_PAGE_SIZE, ...(search ? { search } : {}) },
   });
   return response.data.results;
 }

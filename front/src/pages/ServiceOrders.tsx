@@ -21,6 +21,7 @@ import {
 import { getClients } from "@/services/client.service";
 import { getVehicles, type Vehicle } from "@/services/vehicle.service";
 import { getEmployees } from "@/services/employee.service";
+import { getUsers } from "@/services/user.service";
 import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
 import { isInvalidPageError } from "@/services/pagination";
@@ -40,6 +41,8 @@ interface ServiceItemRow {
   key: number;
   service_id: string;
   service_name: string;
+  mechanic_id: string;
+  mechanic_label?: string;
   price: string;
   discount: string;
   label?: string;
@@ -48,6 +51,8 @@ interface ServiceItemRow {
 interface ProductItemRow {
   key: number;
   product_id: string;
+  seller_id: string;
+  seller_label?: string;
   quantity: string;
   price: string;
   discount: string;
@@ -73,8 +78,6 @@ export default function ServiceOrdersPage() {
   const [clientLabel, setClientLabel] = useState("");
   const [vehicleId, setVehicleId] = useState("");
   const [vehicleLabel, setVehicleLabel] = useState("");
-  const [mechanicId, setMechanicId] = useState("");
-  const [mechanicLabel, setMechanicLabel] = useState("");
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
   const [vehicleDialogOpen, setVehicleDialogOpen] = useState(false);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
@@ -147,8 +150,6 @@ export default function ServiceOrdersPage() {
     setClientLabel("");
     setVehicleId("");
     setVehicleLabel("");
-    setMechanicId("");
-    setMechanicLabel("");
     setNewVehicle(null);
     setDescription("");
     setObservations("");
@@ -161,14 +162,14 @@ export default function ServiceOrdersPage() {
   function addServiceRow() {
     setServiceRows((rows) => [
       ...rows,
-      { key: ++rowKey, service_id: "", service_name: "", price: "", discount: "" },
+      { key: ++rowKey, service_id: "", service_name: "", mechanic_id: "", price: "", discount: "" },
     ]);
   }
 
   function addProductRow() {
     setProductRows((rows) => [
       ...rows,
-      { key: ++rowKey, product_id: "", quantity: "1", price: "", discount: "" },
+      { key: ++rowKey, product_id: "", seller_id: "", quantity: "1", price: "", discount: "" },
     ]);
   }
 
@@ -236,6 +237,15 @@ export default function ServiceOrdersPage() {
     }));
   }, []);
 
+  const searchUsers = useCallback(async (term: string): Promise<SearchableOption[]> => {
+    const list = await getUsers(term || undefined);
+    return list.map((user) => ({
+      id: user.id,
+      primary: user.full_name,
+      secondary: user.email,
+    }));
+  }, []);
+
   const searchServices = useCallback(async (term: string): Promise<SearchableOption[]> => {
     const list = await getServices(term || undefined);
     for (const service of list) serviceCache.current.set(service.id, service);
@@ -300,17 +310,18 @@ export default function ServiceOrdersPage() {
       const created = await createServiceOrder({
         client_id: clientId,
         vehicle_id: vehicleId,
-        mechanic_id: mechanicId || null,
         description: description.trim() || undefined,
         observations: observations.trim() || undefined,
         services: serviceRows.map((row) => ({
           service_id: row.service_id || null,
           service_name: row.service_id ? undefined : row.service_name.trim(),
+          mechanic_id: row.mechanic_id || null,
           price: parseDecimalValue(row.price).toFixed(2),
           discount: parseDecimalValue(row.discount).toFixed(2),
         })),
         products: productRows.map((row) => ({
           product_id: row.product_id,
+          seller_id: row.seller_id || null,
           quantity: Number(row.quantity) || 1,
           price: parseDecimalValue(row.price).toFixed(2),
           discount: parseDecimalValue(row.discount).toFixed(2),
@@ -420,9 +431,9 @@ export default function ServiceOrdersPage() {
         onSubmit={() => void handleSubmit()}
         submitLabel="Criar OS"
         loading={saving}
-        maxWidth="max-w-3xl"
+        maxWidth="max-w-6xl"
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2">
           <SearchableSelect
             label="Cliente"
             value={clientId || null}
@@ -456,26 +467,16 @@ export default function ServiceOrdersPage() {
             onCreate={() => setVehicleDialogOpen(true)}
           />
 
-          <SearchableSelect
-            label="Mecânico responsável"
-            optional
-            value={mechanicId || null}
-            initialLabel={mechanicLabel || null}
-            onChange={(id, option) => {
-              setMechanicId(id ?? "");
-              setMechanicLabel(option?.primary ?? "");
-            }}
-            searchOptions={searchMechanics}
-            placeholder="Digite o nome do mecânico..."
-          />
-
-          <FormField
-            label="Descrição"
-            optional
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Descrição do serviço solicitado"
-          />
+          <div className="sm:col-span-2">
+            <FormField
+              label="Descrição"
+              optional
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Descrição do serviço solicitado"
+              className="h-10 [&_input]:h-full"
+            />
+          </div>
         </div>
 
         <div className="mt-6">
@@ -491,20 +492,27 @@ export default function ServiceOrdersPage() {
           ) : (
             <div className="space-y-3">
               {serviceRows.map((row) => (
-                <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
-                  <div className="sm:col-span-4">
+                <div
+                  key={row.key}
+                  className={`grid grid-cols-1 items-end gap-3 rounded-lg border border-border/50 p-3 ${
+                    row.service_id
+                      ? "sm:grid-cols-[2fr_2fr_130px_130px_auto]"
+                      : "sm:grid-cols-[1.5fr_1.5fr_1.5fr_120px_120px_auto]"
+                  }`}
+                >
+                  <div className="min-w-0">
                     <SearchableSelect
                       label="Catálogo"
                       optional
                       value={row.service_id || null}
                       initialLabel={row.label ?? null}
-                    onChange={(id, option) => handleServiceSelect(row.key, id ?? "", option?.primary)}
+                      onChange={(id, option) => handleServiceSelect(row.key, id ?? "", option?.primary)}
                       searchOptions={searchServices}
                       placeholder="Serviço livre ou busque no catálogo..."
                     />
                   </div>
                   {!row.service_id && (
-                    <div className="sm:col-span-4">
+                    <div className="min-w-0">
                       <FormField
                         label="Nome do serviço"
                         value={row.service_name}
@@ -516,10 +524,30 @@ export default function ServiceOrdersPage() {
                           )
                         }
                         placeholder="Ex: Troca de óleo"
+                        className="h-10 [&_input]:h-full"
                       />
                     </div>
                   )}
-                  <div className="sm:col-span-2">
+                  <div className="min-w-0">
+                    <SearchableSelect
+                      label="Mecânico"
+                      optional
+                      value={row.mechanic_id || null}
+                      initialLabel={row.mechanic_label ?? null}
+                      onChange={(id, option) =>
+                        setServiceRows((rows) =>
+                          rows.map((item) =>
+                            item.key === row.key
+                              ? { ...item, mechanic_id: id ?? "", mechanic_label: option?.primary ?? "" }
+                              : item,
+                          ),
+                        )
+                      }
+                      searchOptions={searchMechanics}
+                      placeholder="Selecione o mecânico..."
+                    />
+                  </div>
+                  <div className="min-w-0">
                     <FormField
                       label="Preço (R$)"
                       value={row.price}
@@ -532,9 +560,10 @@ export default function ServiceOrdersPage() {
                         )
                       }
                       placeholder="0,00"
+                      className="h-10 [&_input]:h-full"
                     />
                   </div>
-                  <div className="sm:col-span-2">
+                  <div className="min-w-0">
                     <FormField
                       label="Desconto (R$)"
                       value={row.discount}
@@ -547,14 +576,15 @@ export default function ServiceOrdersPage() {
                         )
                       }
                       placeholder="0,00"
+                      className="h-10 [&_input]:h-full"
                     />
                   </div>
-                  <div className="flex items-end sm:col-span-1">
+                  <div className="flex items-end">
                     <button
                       type="button"
                       onClick={() => setServiceRows((rows) => rows.filter((item) => item.key !== row.key))}
                       aria-label="Remover serviço"
-                      className="mb-1 rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                     >
                       <IconTrash size={16} />
                     </button>
@@ -581,13 +611,16 @@ export default function ServiceOrdersPage() {
               {productRows.map((row) => {
                 const product = productCache.current.get(row.product_id);
                 return (
-                  <div key={row.key} className="grid grid-cols-1 gap-2 rounded-lg border border-border/50 p-3 sm:grid-cols-12">
-                    <div className="sm:col-span-4">
+                  <div
+                    key={row.key}
+                    className="grid grid-cols-1 items-end gap-3 rounded-lg border border-border/50 p-3 sm:grid-cols-[2fr_2fr_90px_130px_130px_auto]"
+                  >
+                    <div className="min-w-0">
                       <SearchableSelect
                         label="Produto"
                         value={row.product_id || null}
                         initialLabel={row.label ?? null}
-                    onChange={(id, option) => handleProductSelect(row.key, id ?? "", option?.primary)}
+                        onChange={(id, option) => handleProductSelect(row.key, id ?? "", option?.primary)}
                         searchOptions={searchProducts}
                         placeholder="Digite o nome ou código do produto..."
                         createLabel="Novo produto"
@@ -597,7 +630,26 @@ export default function ServiceOrdersPage() {
                         }}
                       />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="min-w-0">
+                      <SearchableSelect
+                        label="Vendedor"
+                        optional
+                        value={row.seller_id || null}
+                        initialLabel={row.seller_label ?? null}
+                        onChange={(id, option) =>
+                          setProductRows((rows) =>
+                            rows.map((item) =>
+                              item.key === row.key
+                                ? { ...item, seller_id: id ?? "", seller_label: option?.primary ?? "" }
+                                : item,
+                            ),
+                          )
+                        }
+                        searchOptions={searchUsers}
+                        placeholder="Selecione o vendedor..."
+                      />
+                    </div>
+                    <div className="min-w-0">
                       <FormField
                         label="Qtd."
                         type="number"
@@ -610,9 +662,10 @@ export default function ServiceOrdersPage() {
                             ),
                           )
                         }
+                        className="h-10 [&_input]:h-full"
                       />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="min-w-0">
                       <FormField
                         label="Preço (R$)"
                         value={row.price}
@@ -625,9 +678,10 @@ export default function ServiceOrdersPage() {
                           )
                         }
                         placeholder="0,00"
+                        className="h-10 [&_input]:h-full"
                       />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="min-w-0">
                       <FormField
                         label="Desconto (R$)"
                         value={row.discount}
@@ -640,20 +694,21 @@ export default function ServiceOrdersPage() {
                           )
                         }
                         placeholder="0,00"
+                        className="h-10 [&_input]:h-full"
                       />
                     </div>
-                    <div className="flex items-end sm:col-span-1">
+                    <div className="flex items-end">
                       <button
                         type="button"
                         onClick={() => setProductRows((rows) => rows.filter((item) => item.key !== row.key))}
                         aria-label="Remover peça"
-                        className="mb-1 rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                       >
                         <IconTrash size={16} />
                       </button>
                     </div>
                     {product && (
-                      <p className="text-xs text-muted-foreground sm:col-span-12">
+                      <p className="text-xs text-muted-foreground sm:col-span-full">
                         Estoque atual: {product.stock_quantity} un.
                       </p>
                     )}
