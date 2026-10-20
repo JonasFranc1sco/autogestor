@@ -48,14 +48,23 @@ class NestedAddressModelSerializer(serializers.ModelSerializer):
 
 
 class WorkshopSerializer(NestedAddressModelSerializer):
+    logo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Workshop
         fields = [
-            'id', 'name', 'cnpj', 'phone', 'email', 'address',
+            'id', 'name', 'cnpj', 'phone', 'email', 'logo_url', 'address',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'logo_url', 'created_at', 'updated_at']
+
+    def get_logo_url(self, obj):
+        if not obj.logo:
+            return None
+        request = self.context.get("request")
+        if request is not None:
+            return request.build_absolute_uri(obj.logo.url)
+        return obj.logo.url
 
     def validate_cnpj(self, value):
         if not value:
@@ -68,5 +77,26 @@ class WorkshopSerializer(NestedAddressModelSerializer):
         if queryset.exists():
             raise serializers.ValidationError(
                 "Já existe uma oficina com este CNPJ."
+            )
+        return value
+
+
+class WorkshopLogoSerializer(serializers.Serializer):
+    logo = serializers.FileField()
+
+    ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".svg"}
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+    def validate_logo(self, value):
+        import os
+
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise serializers.ValidationError(
+                "Formato não permitido. Envie JPG, PNG ou SVG."
+            )
+        if value.size > self.MAX_FILE_SIZE:
+            raise serializers.ValidationError(
+                "A logo deve ter no máximo 5 MB."
             )
         return value

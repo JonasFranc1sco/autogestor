@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.models import Workshop
-from core.serializers import WorkshopSerializer
+from core.serializers import WorkshopLogoSerializer, WorkshopSerializer
 from users.permissions import IsManagerOrAdmin
 from core.tenancy import tenant_of
 
@@ -26,6 +26,44 @@ class WorkshopView(generics.RetrieveUpdateAPIView):
         if workshop is None:
             raise NotFound("Usuário da plataforma não possui oficina associada.")
         return workshop
+
+
+class WorkshopLogoView(APIView):
+    """Upload e remoção da logo da oficina (JPG, PNG, SVG)."""
+
+    permission_classes = [IsManagerOrAdmin]
+
+    def _get_workshop(self, request):
+        workshop = tenant_of(request.user)
+        if workshop is None:
+            raise NotFound("Usuário da plataforma não possui oficina associada.")
+        return workshop
+
+    def post(self, request):
+        workshop = self._get_workshop(request)
+        serializer = WorkshopLogoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if workshop.logo:
+            workshop.logo.delete(save=False)
+
+        workshop.logo = serializer.validated_data["logo"]
+        workshop.save(update_fields=["logo", "updated_at"])
+
+        return Response(
+            WorkshopSerializer(workshop, context={"request": request}).data
+        )
+
+    def delete(self, request):
+        workshop = self._get_workshop(request)
+        if workshop.logo:
+            workshop.logo.delete(save=False)
+            workshop.logo = None
+            workshop.save(update_fields=["logo", "updated_at"])
+
+        return Response(
+            WorkshopSerializer(workshop, context={"request": request}).data
+        )
 
 
 class DashboardView(APIView):
