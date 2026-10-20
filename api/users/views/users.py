@@ -65,7 +65,7 @@ class UserViewSet(viewsets.ModelViewSet):
             permissions = [IsAdmin]
             
         elif self.action == "list":
-            permissions= [IsManagerOrAdmin]
+            permissions = [IsAuthenticated]
 
         elif self.action in (
             "retrieve",

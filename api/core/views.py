@@ -262,9 +262,16 @@ class ReportsView(APIView):
                 "revenue": f"{row['revenue']:.2f}",
             }
             for row in (
-                done.exclude(mechanic=None)
+                ServiceOrderService.objects
+                .filter(service_order__in=done)
+                .exclude(mechanic=None)
                 .values("mechanic__name")
-                .annotate(orders=Count("id"), revenue=Sum("total_price"))
+                .annotate(
+                    orders=Count("service_order", distinct=True),
+                    revenue=Sum(
+                        ExpressionWrapper(F("price") - F("discount"), output_field=money)
+                    ),
+                )
                 .order_by("-revenue")
             )
         ]

@@ -41,10 +41,11 @@ class VehicleViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
         queryset = (
             ServiceOrder.objects
             .filter(vehicle=vehicle)
-            .select_related("client", "vehicle", "mechanic")
+            .select_related("client", "vehicle")
             .prefetch_related(
                 "services__service", "products__product",
-                "payments", "events__created_by",
+                "payments", "events__created_by", "services__mechanic__address",
+                "products__seller",
             )
         )
         serializer = ServiceOrderSerializer(
