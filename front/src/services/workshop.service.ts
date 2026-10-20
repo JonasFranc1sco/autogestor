@@ -7,6 +7,7 @@ export interface Workshop {
   cnpj: string | null;
   phone: string | null;
   email: string | null;
+  logo_url?: string | null;
   address: {
     id: string;
     cep: string;
@@ -34,5 +35,19 @@ export async function getWorkshop(): Promise<Workshop> {
 
 export async function updateWorkshop(data: WorkshopUpdateData): Promise<Workshop> {
   const response = await api.patch<Workshop>("/api/workshop/", data);
+  return response.data;
+}
+
+export async function uploadWorkshopLogo(file: File): Promise<Workshop> {
+  const formData = new FormData();
+  formData.append("logo", file);
+  const response = await api.post<Workshop>("/api/workshop/logo/", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+}
+
+export async function deleteWorkshopLogo(): Promise<Workshop> {
+  const response = await api.delete<Workshop>("/api/workshop/logo/");
   return response.data;
 }

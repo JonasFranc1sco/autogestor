@@ -1,5 +1,6 @@
 import { api } from "./api";
 import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { type Address } from "./client.service";
 
 export type ServiceOrderStatus =
   | "OPEN"
@@ -104,6 +105,9 @@ export interface ServiceOrder {
     id: string;
     name: string;
     document: string | null;
+    phone?: string | null;
+    email?: string | null;
+    address?: Address | null;
   };
   vehicle: {
     id: string;
