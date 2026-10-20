@@ -1,5 +1,6 @@
 import { api } from "./api";
 import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
+import { type Address } from "./client.service";
 
 export type ServiceOrderStatus =
   | "OPEN"
@@ -36,6 +37,11 @@ export interface ServiceOrderItemService {
     sale_price?: string;
   };
   service_id?: string | null;
+  mechanic?: {
+    id: string;
+    name: string;
+  } | null;
+  mechanic_id?: string | null;
   price: string | number;
   discount?: string | number;
   total_price?: string | number;
@@ -51,6 +57,12 @@ export interface ServiceOrderItemProduct {
     sale_price?: string;
   };
   product_id?: string;
+  seller?: {
+    id: string;
+    full_name: string;
+    email?: string;
+  } | null;
+  seller_id?: string | null;
   quantity: number;
   price: string | number;
   discount?: string | number;
@@ -93,6 +105,9 @@ export interface ServiceOrder {
     id: string;
     name: string;
     document: string | null;
+    phone?: string | null;
+    email?: string | null;
+    address?: Address | null;
   };
   vehicle: {
     id: string;
@@ -101,10 +116,6 @@ export interface ServiceOrder {
     model: string;
     mileage?: string | null;
   };
-  mechanic: {
-    id: string;
-    name: string;
-  } | null;
   status: ServiceOrderStatus;
   description: string | null;
   observations: string | null;
@@ -125,17 +136,18 @@ export interface ServiceOrder {
 export interface ServiceOrderCreateData {
   client_id: string;
   vehicle_id: string;
-  mechanic_id?: string | null;
   description?: string;
   observations?: string;
   services?: {
     service_id?: string | null;
     service_name?: string;
+    mechanic_id?: string | null;
     price: number | string;
     discount?: number | string;
   }[];
   products?: {
     product_id: string;
+    seller_id?: string | null;
     quantity: number;
     price: number | string;
     discount?: number | string;

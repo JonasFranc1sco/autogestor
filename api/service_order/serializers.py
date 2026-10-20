@@ -10,6 +10,8 @@ from clients.models import Client
 from clients.serializers import ClientSerializer
 from vehicles.models import Vehicle
 from vehicles.serializers import VehicleSerializer
+from users.models import User
+from users.serializers.user import UserListSerializer
 from employees.models import Employee
 from employees.serializers import EmployeeSerializer
 from products.models import Product
@@ -29,12 +31,17 @@ class ServiceOrderServiceSerializer(serializers.ModelSerializer):
     service_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    mechanic = EmployeeSerializer(read_only=True)
+    mechanic_id = TenantPrimaryKeyRelatedField(
+        queryset=Employee.objects.all(), write_only=True, source="mechanic", required=False, allow_null=True
+    )
 
     class Meta:
         model = ServiceOrderService
         fields = [
             "id", "service", "service_id", "service_name",
-            "price", "discount", "total_price"
+            "mechanic", "mechanic_id",
+            "price", "discount", "total_price",
         ]
 
     def validate(self, attrs):
@@ -61,14 +68,19 @@ class ServiceOrderProductSerializer(serializers.ModelSerializer):
     product_id = TenantPrimaryKeyRelatedField(
         queryset=Product.objects.all(), write_only=True, source="product"
     )
+    seller = UserListSerializer(read_only=True)
+    seller_id = TenantPrimaryKeyRelatedField(
+        queryset=User.objects.all(), write_only=True, source="seller", required=False, allow_null=True
+    )
     price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
         model = ServiceOrderProduct
         fields = [
-            "id", "product", "product_id", "quantity",
-            "price", "discount", "total_price"
+            "id", "product", "product_id",
+            "seller", "seller_id", "quantity",
+            "price", "discount", "total_price",
         ]
 
     def validate(self, attrs):
@@ -132,16 +144,12 @@ class ServiceOrderPaymentSerializer(serializers.ModelSerializer):
 class ServiceOrderSerializer(serializers.ModelSerializer):
     client = ClientSerializer(read_only=True)
     vehicle = VehicleSerializer(read_only=True)
-    mechanic = EmployeeSerializer(read_only=True)
 
     client_id = TenantPrimaryKeyRelatedField(
         queryset=Client.objects.all(), write_only=True, source="client"
     )
     vehicle_id = TenantPrimaryKeyRelatedField(
         queryset=Vehicle.objects.all(), write_only=True, source="vehicle"
-    )
-    mechanic_id = TenantPrimaryKeyRelatedField(
-        queryset=Employee.objects.all(), write_only=True, source="mechanic", required=False, allow_null=True
     )
 
     services = ServiceOrderServiceSerializer(many=True, required=False)
@@ -154,8 +162,8 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceOrder
         fields = [
-            "id", "number", "client", "vehicle", "mechanic",
-            "client_id", "vehicle_id", "mechanic_id",
+            "id", "number", "client", "vehicle",
+            "client_id", "vehicle_id",
             "status", "description", "observations", "odometer",
             "total_price", "paid_total", "balance",
             "services", "products", "events", "payments",
@@ -232,7 +240,7 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
                 workshop=workshop,
                 is_active=True,
                 defaults={
-                    "employee": service_order.mechanic,
+                    "employee": item_data.get("mechanic"),
                     "cost_price": item_data.get("price", Decimal("0.00")),
                     "sale_price": item_data.get("price", Decimal("0.00")),
                     "margin_percentage": Decimal("0.00"),
@@ -243,6 +251,7 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
         ServiceOrderService.objects.create(
             service_order=service_order,
             service=service,
+            mechanic=item_data.get("mechanic"),
             price=item_data.get("price", Decimal("0.00")),
             discount=item_data.get("discount", Decimal("0.00")),
         )
@@ -254,6 +263,7 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
         ServiceOrderProduct.objects.create(
             service_order=service_order,
             product=product,
+            seller=item_data.get("seller"),
             quantity=quantity,
             price=item_data.get("price", product.sale_price),
             discount=item_data.get("discount", Decimal("0.00")),

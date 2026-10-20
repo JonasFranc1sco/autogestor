@@ -174,3 +174,5 @@
 .animate-logo-pulse {
   animation: logo-pulse 3s ease-in-out infinite;
 }
+
+@page { margin:0; }

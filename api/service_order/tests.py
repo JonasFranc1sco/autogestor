@@ -74,6 +74,7 @@ class ServiceOrderBaseTestCase(APITestCase):
             "services": [
                 {
                     "service_name": "Troca de óleo e filtro",
+                    "mechanic_id": str(self.mechanic.id),
                     "price": "100.00",
                     "discount": "10.00",
                 }
@@ -81,6 +82,7 @@ class ServiceOrderBaseTestCase(APITestCase):
             "products": [
                 {
                     "product_id": str(self.product.id),
+                    "seller_id": str(self.admin.id),
                     "quantity": 2,
                     "price": "40.00",
                     "discount": "5.00",
@@ -105,9 +107,11 @@ class ServiceOrderCreateTests(ServiceOrderBaseTestCase):
 
         service_item = order.services.first()
         self.assertEqual(service_item.total_price, Decimal("90.00"))
+        self.assertEqual(service_item.mechanic, self.mechanic)
 
         product_item = order.products.first()
         self.assertEqual(product_item.total_price, Decimal("75.00"))
+        self.assertEqual(product_item.seller, self.admin)
 
         self.assertEqual(order.total_price, Decimal("165.00"))
         self.assertEqual(order.number, 1)

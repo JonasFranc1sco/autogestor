@@ -24,22 +24,22 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
     queryset = ServiceOrder.objects.select_related(
         "workshop", "client", "client__address",
         "vehicle", "vehicle__owner", "vehicle__owner__address",
-        "mechanic", "mechanic__address", "created_by",
+        "created_by",
     ).prefetch_related(
         "services__service__employee__address", "products__product",
-        "payments", "events__created_by",
+        "payments", "events__created_by", "services__mechanic__address", "products__seller",
     ).all()
     serializer_class = ServiceOrderSerializer
 
     permission_classes = [CanManageServiceOrders]
 
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["status", "client", "mechanic"]
+    filterset_fields = ["status", "client",]
     search_fields = ["number", "client__name", "vehicle__license_plate", "description"]
     ordering_fields = ["created_at", "number", "total_price", "status"]
     ordering = ["-created_at"]
 
-    MECHANIC_EDITABLE_FIELDS = {"observations", "mechanic_id"}
+    MECHANIC_EDITABLE_FIELDS = {"observations"}
 
     def update(self, request, *args, **kwargs):
         if request.user.role == Role.MECHANIC:

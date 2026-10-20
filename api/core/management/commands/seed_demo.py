@@ -262,7 +262,6 @@ class Command(BaseCommand):
                 workshop=workshop,
                 client=clients[i],
                 vehicle=vehicles[i],
-                mechanic=employees[i],
                 created_by=user,
                 description=f"{desc} (OS Demo #{i + 1})",
                 status=status,

@@ -12,6 +12,19 @@ export interface UserProfile {
     id: string;
     name: string;
     cnpj?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    logo_url?: string | null;
+    address?: {
+      id: string;
+      cep: string;
+      street: string;
+      number: string;
+      neighborhood: string;
+      city: string;
+      state: string;
+      complement: string | null;
+    } | null;
   } | null;
   created_at: string;
   is_active: boolean;

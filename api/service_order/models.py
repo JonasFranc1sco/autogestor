@@ -3,6 +3,7 @@ from django.db import models
 from django.db.models import F, Q
 from core.models import BaseModel, Workshop
 from clients.models import Client
+from users.models import User
 from vehicles.models import Vehicle
 from employees.models import Employee
 from services.models import Service
@@ -38,7 +39,6 @@ class ServiceOrder(BaseModel):
     number = models.PositiveIntegerField(editable=False, help_text="Número sequencial da OS na oficina")
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="service_orders")
     vehicle = models.ForeignKey(Vehicle, on_delete=models.PROTECT, related_name="service_orders")
-    mechanic = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_orders")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -122,6 +122,14 @@ class ServiceOrder(BaseModel):
 class ServiceOrderService(BaseModel):
     service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="services")
     service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name="service_order_items")
+    mechanic = models.ForeignKey(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="service_order_services",
+        verbose_name="Mecânico",
+    )
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
@@ -147,6 +155,7 @@ class ServiceOrderService(BaseModel):
 class ServiceOrderProduct(BaseModel):
     service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="products")
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="service_order_items")
+    seller = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_order_products", verbose_name="Vendedor / Atendente")
     quantity = models.PositiveIntegerField(default=1)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)

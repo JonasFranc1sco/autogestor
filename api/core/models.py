@@ -38,6 +38,13 @@ class Address(models.Model):
         return f"{self.street}, {self.number} — {self.city}/{self.state}"
 
 
+def workshop_logo_upload_to(instance, filename):
+    import os
+
+    ext = os.path.splitext(filename)[1].lower()
+    return f"workshops/logos/{uuid.uuid4().hex}{ext}"
+
+
 class Workshop(BaseModel):
     class Meta(BaseModel.Meta):
         verbose_name = 'Oficina'
@@ -48,6 +55,12 @@ class Workshop(BaseModel):
     cnpj = models.CharField('CNPJ', max_length=18, unique=True, blank=True, null=True)
     phone = PhoneNumberField(blank=True, null=True)
     email = models.EmailField(max_length=254, blank=True, null=True)
+    logo = models.FileField(
+        upload_to=workshop_logo_upload_to,
+        blank=True,
+        null=True,
+        verbose_name='Logo',
+    )
     address = models.OneToOneField(
         Address,
         on_delete=models.SET_NULL,
