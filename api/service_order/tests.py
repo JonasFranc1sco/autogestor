@@ -250,7 +250,46 @@ class ServiceOrderCreateTests(ServiceOrderBaseTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    def test_negative_service_discount_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_name": "Troca", "price": "100.00", "discount": "-20.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_negative_service_price_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_name": "Troca", "price": "-100.00", "discount": "-100.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_negative_product_discount_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[
+                    {
+                        "product_id": str(self.product.id),
+                        "quantity": 1,
+                        "price": "40.00",
+                        "discount": "-10.00",
+                    }
+                ],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
     def test_number_is_sequential_per_workshop(self):
         self.client.post(OS_URL, self.payload(), format="json")
         self.client.post(OS_URL, self.payload(), format="json")
@@ -738,6 +777,51 @@ class ServiceOrderPaymentTests(ServiceOrderBaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["number"], 1)
+    
+    def test_cannot_reduce_order_total_below_paid_total(self):
+        order_id = self.create_order()  # total_price = 165.00
+
+        # Registra pagamento parcial de R$ 100,00
+        self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "100.00"},
+            format="json",
+        )
+
+        # Tenta reduzir os itens da OS para R$ 50,00 (< R$ 100,00 já pagos)
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {
+                "services": [{"service_name": "Serviço menor", "price": "50.00"}],
+                "products": [],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Verifica que o rollback preservou o total original (165.00) e o estoque (13)
+        order = ServiceOrder.objects.get(id=order_id)
+        self.assertEqual(order.total_price, Decimal("165.00"))
+        self.assertEqual(order.balance, Decimal("65.00"))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+    def test_closed_order_general_fields_cannot_change(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "DONE"}, format="json"
+        )
+
+        # Tenta alterar descrição, observações ou hodômetro de uma OS concluída
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"description": "Tentativa de edição após conclusão", "odometer": 999999},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class ServiceOrderStockReleaseIdempotencyTests(ServiceOrderBaseTestCase):

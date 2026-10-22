@@ -29,7 +29,8 @@ class ServiceOrderServiceSerializer(serializers.ModelSerializer):
         queryset=Service.objects.all(), write_only=True, source="service", required=False, allow_null=True
     )
     service_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.00"), required=False)
+    discount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.00"), required=False, default=Decimal("0.00"))
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     mechanic = EmployeeSerializer(read_only=True)
     mechanic_id = TenantPrimaryKeyRelatedField(
@@ -72,7 +73,8 @@ class ServiceOrderProductSerializer(serializers.ModelSerializer):
     seller_id = TenantPrimaryKeyRelatedField(
         queryset=User.objects.all(), write_only=True, source="seller", required=False, allow_null=True
     )
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.00"), required=False)
+    discount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.00"), required=False, default=Decimal("0.00"))
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
     class Meta:
@@ -184,9 +186,8 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
             )
 
         if self.instance is not None and self.instance.status in ServiceOrder.CLOSED_STATUSES:
-            if "services" in attrs or "products" in attrs:
                 raise serializers.ValidationError(
-                    "Não é possível alterar itens de uma ordem de serviço encerrada."
+                    "Não é possível alterar uma ordem de serviço encerrada."
                 )
 
         services_items = attrs.get("services", [])
@@ -338,6 +339,11 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        locked_order = ServiceOrder.objects.select_for_update().get(pk=instance.pk)
+        if locked_order.status in ServiceOrder.CLOSED_STATUSES:
+            raise serializers.ValidationError(
+                "Não é possível alterar uma ordem de serviço encerrada."
+            )
         services_data = validated_data.pop("services", None)
         products_data = validated_data.pop("products", None)
         validated_data.pop("workshop", None)
@@ -353,7 +359,18 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
                 user=self._get_user(),
             )
 
-        instance.total_price = instance.calculate_total()
+        new_total = instance.calculate_total()
+        paid_total = locked_order.paid_total
+        if new_total < paid_total:
+            raise serializers.ValidationError(
+                {
+                    "detail": (
+                        f"O novo valor total da OS ({new_total}) não pode ser menor"
+                        f"que o valor já pago ({paid_total}). Estorne os pagamentos antes de reduzir os itens."
+                    )
+                }
+            )
+        instance.total_price = new_total
         instance.save(update_fields=["total_price"])
 
         return instance

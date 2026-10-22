@@ -12,7 +12,7 @@ venv/
 env/
 ENV/
 
-*.md
+*dev.md
 
 # Django
 *.sqlite3

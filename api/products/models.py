@@ -1,3 +1,5 @@
+from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 from core.models import BaseModel, Workshop
@@ -20,9 +22,9 @@ class Product(BaseModel):
     supplier = models.CharField(max_length=50, blank=True, null=True, help_text="Fornecedor do produto")
     brand = models.CharField(max_length=50, blank=True, null=True, help_text="Marca do produto")
 
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Preço de custo pago ao fornecedor")
-    margin_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Margem desejada em %")
-    sale_price = models.DecimalField(max_digits=10, decimal_places=2, help_text="Preço de venda para o cliente")
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))], help_text="Preço de custo pago ao fornecedor")
+    margin_percentage = models.DecimalField(max_digits=5, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))], default=0, help_text="Margem desejada em %")
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))], help_text="Preço de venda para o cliente")
 
     warranty_days = models.PositiveIntegerField(
         default=90, blank=True, null=True,
@@ -45,6 +47,10 @@ class Product(BaseModel):
             models.CheckConstraint(
                 condition=Q(stock_quantity__gte=0),
                 name='product_stock_not_negative',
+            ),
+            models.CheckConstraint(
+                condition=Q(cost_price__gte=0) & Q(sale_price__gte=0) & Q(margin_percentage__gte=0),
+                name='product_prices_non_negative',
             ),
             models.UniqueConstraint(
                 fields=['workshop', 'barcode'],
