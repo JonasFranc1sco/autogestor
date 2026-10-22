@@ -120,36 +120,38 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
             queryset = service_order.payments.select_related("created_by")
             serializer = ServiceOrderPaymentSerializer(queryset, many=True)
             return Response(serializer.data)
-
-        if service_order.status == ServiceOrder.Status.CANCELLED:
-            return Response(
-                {"detail": "Não é possível registrar pagamentos em uma OS cancelada."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        
         serializer = ServiceOrderPaymentSerializer(
             data=request.data,
             context=self.get_serializer_context(),
         )
         serializer.is_valid(raise_exception=True)
 
-        amount = serializer.validated_data["amount"]
-        if amount > service_order.balance:
-            return Response(
-                {"detail": f"O valor do pagamento não pode exceder o saldo da OS ({service_order.balance})."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        with transaction.atomic():
+            locked_order = ServiceOrder.objects.select_for_update().get(pk=service_order.pk)
+            if locked_order.status == ServiceOrder.Status.CANCELLED:
+                return Response(
+                    {"detail": "Não é possível registrar pagamentos em uma OS cancelada."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+                
+            amount = serializer.validated_data["amount"]
+            if amount > locked_order.balance:
+                return Response(
+                    {"detail": f"O valor do pagamento não pode exceder o saldo da OS ({locked_order.balance})."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        payment = serializer.save(
-            service_order=service_order,
-            workshop=service_order.workshop,
-            created_by=request.user,
-        )
-        ServiceOrderEvent.objects.create(
-            service_order=service_order,
-            description=f"Pagamento de {payment.amount} registrado ({payment.get_method_display()})",
-            created_by=request.user,
-        )
+            payment = serializer.save(
+                service_order=locked_order,
+                workshop=service_order.workshop,
+                created_by=request.user,
+            )
+            ServiceOrderEvent.objects.create(
+                service_order=locked_order,
+                description=f"Pagamento de {payment.amount} registrado ({payment.get_method_display()})",
+                created_by=request.user,
+            )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["delete"], url_path="payments/(?P<payment_id>[^/.]+)")

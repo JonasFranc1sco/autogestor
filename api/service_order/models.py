@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.core.validators import MinValueValidator
+from decimal import Decimal
 from django.db import models
 from django.db.models import F, Q
 from core.models import BaseModel, Workshop
@@ -130,8 +132,8 @@ class ServiceOrderService(BaseModel):
         related_name="service_order_services",
         verbose_name="Mecânico",
     )
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))])
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(Decimal("0.00"))])
 
     class Meta(BaseModel.Meta):
         verbose_name = 'Serviço da OS'
@@ -140,6 +142,10 @@ class ServiceOrderService(BaseModel):
             models.UniqueConstraint(
                 fields=['service_order', 'service'],
                 name='uniq_service_per_service_order',
+            ),
+            models.CheckConstraint(
+                condition=Q(price__gte=0) & Q(discount__gte=0),
+                name='service_order_service_values_non_negative',
             ),
             models.CheckConstraint(
                 condition=Q(discount__lte=F('price')),
@@ -157,8 +163,8 @@ class ServiceOrderProduct(BaseModel):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="service_order_items")
     seller = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="service_order_products", verbose_name="Vendedor / Atendente")
     quantity = models.PositiveIntegerField(default=1)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))])
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(Decimal("0.00"))])
 
     class Meta(BaseModel.Meta):
         verbose_name = 'Produto da OS'
@@ -171,6 +177,10 @@ class ServiceOrderProduct(BaseModel):
             models.CheckConstraint(
                 condition=Q(quantity__gte=1),
                 name='service_order_product_quantity_at_least_one',
+            ),
+            models.CheckConstraint(
+                condition=Q(price__gte=0) & Q(discount__gte=0),
+                name='service_order_product_values_non_negative',
             ),
             models.CheckConstraint(
                 condition=Q(discount__lte=F('price') * F('quantity')),
