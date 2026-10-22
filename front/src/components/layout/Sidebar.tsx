@@ -16,6 +16,7 @@ import {
   IconChartBar,
   IconSettings,
   IconUserCog,
+  IconFileDollar,
 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -36,6 +37,7 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
     { icon: IconHome, label: "Dashboard", to: "/" },
     { icon: IconUsers, label: "Clientes", to: "/clientes" },
     { icon: IconClipboardList, label: "Ordens de Serviço", to: "/os" },
+    { icon: IconFileDollar, label: "Orçamento", to: "/orcamento" },
     { icon: IconCar, label: "Veículos", to: "/veiculos" },
     { icon: IconBox, label: "Produtos", to: "/produtos" },
     { icon: IconTool, label: "Serviços", to: "/servicos" },
@@ -52,7 +54,7 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
 
   return (
     <aside
-      className={`flex w-[260px] shrink-0 flex-col border-r border-border bg-surface p-4 max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:transition-transform ${
+      className={`flex w-[260px] shrink-0 flex-col border-r border-border bg-surface p-4 print:hidden max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:transition-transform ${
         mobileOpen ? "max-lg:translate-x-0" : "max-lg:-translate-x-full"
       }`}
     >
