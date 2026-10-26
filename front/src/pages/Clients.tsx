@@ -1,331 +1,235 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { IconLoader2, IconPencil, IconTrash, IconCar } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { getClients, createClient, updateClient, type Client } from "@/services/client.service";
-import { IconLoader2 } from "@tabler/icons-react";
+import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
+import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  getClientsPaginated,
+  deleteClient,
+  type Client,
+} from "@/services/client.service";
+import { isInvalidPageError } from "@/services/pagination";
+import { extractApiErrorMessage } from "@/lib/errors";
+import { maskCpfCnpj } from "@/lib/masks";
 
 export default function ClientsPage() {
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [saving, setSaving] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [clients, setClients] = useState<Client[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Client | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [vehicleClient, setVehicleClient] = useState<Client | null>(null);
+  const [newVehicleOpen, setNewVehicleOpen] = useState(false);
+  const requestIdRef = useRef(0);
 
-  const [form, setForm] = useState({
-    person_type: "PF" as "PF" | "PJ",
-    name: "",
-    email: "",
-    phone: "",
-    document: "",
-    responsible: "",
-    address: {
-      cep: "",
-      street: "",
-      number: "",
-      neighborhood: "",
-      city: "",
-      state: "",
-      complement: "",
-    },
-  });
-
-  useEffect(() => {
-    loadClients();
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    try {
+      const data = await getClientsPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setClients(data.results);
+      setTotalCount(data.count);
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
+      toast.error(extractApiErrorMessage(error, "Não foi possível carregar os clientes."));
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
+    }
   }, []);
 
-  async function loadClients() {
-    try {
-      setLoading(true);
-      const data = await getClients();
-      setClients(data);
-    } catch (error) {
-      console.error("Erro ao carregar clientes:", error);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
+
+  useEffect(() => {
+    if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
+      setEditing(null);
+      setDialogOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return clients.filter(
-      (c) =>
-        c.name.toLowerCase().includes(term) ||
-        c.email.toLowerCase().includes(term) ||
-        c.document?.includes(term)
-    );
-  }, [clients, search]);
-
-  async function handleSubmit() {
-    if (!form.name || !form.email || !form.document) return;
-
-    try {
-      setSaving(true);
-
-      const data = {
-        ...form,
-        responsible: form.responsible || undefined,
-      };
-
-      if (selectedClient){
-        await updateClient(selectedClient.id, data);
-      } else {
-        await createClient(data);
-      }
-
-      setDialogOpen(false);
-      setSelectedClient(null);
-
-      await loadClients();
-
-    } catch (error) {
-      console.error("Erro ao criar cliente:", error);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleEditClient(client: Client) {
-    setSelectedClient(client);
-
-    setForm({
-      person_type: client.person_type,
-      name: client.name,
-      email: client.email,
-      phone: client.phone,
-      document: client.document,
-      responsible: client.responsible ?? "",
-      address: {
-        cep: client.address.cep,
-        street: client.address.street,
-        number: client.address.number,
-        neighborhood: client.address.neighborhood,
-        city: client.address.city,
-        state: client.address.state,
-        complement: client.address.complement,
-    },
-    });
-
+  function openCreate() {
+    setEditing(null);
     setDialogOpen(true);
   }
 
-  return (
-    <>
-      <PageLayout
-        title="Clientes"
-        searchPlaceholder="Buscar por nome, email ou documento..."
-        searchValue={search}
-        onSearchChange={setSearch}
-        onAdd={() => {
-          setSelectedClient(null);
-          setForm({
-            person_type: "PF",
-            name: "",
-            email: "",
-            phone: "",
-            document: "",
-            responsible: "",
-            address: {
-              cep: "",
-              street: "",
-              number: "",
-              neighborhood: "",
-              city: "",
-              state: "",
-              complement: "",
-            },
-          });
-          setDialogOpen(true)
+  function openEdit(client: Client) {
+    setEditing(client);
+    setDialogOpen(true);
+  }
 
-        }}
-        addLabel="Novo Cliente"
-      >
+  function openVehicleFor(client: Client) {
+    setVehicleClient(client);
+    setNewVehicleOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteClient(deleteTarget.id);
+      toast.success("Cliente removido com sucesso.");
+      setDeleteTarget(null);
+      await load(page, debouncedSearch);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível remover o cliente."));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <PageLayout
+      title="Clientes"
+      searchPlaceholder="Buscar por nome, CPF/CNPJ ou e-mail..."
+      searchValue={search}
+      onSearchChange={setSearch}
+      onAdd={openCreate}
+      addLabel="Novo Cliente"
+    >
+      <div className="rounded-2xl border border-border bg-surface">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <IconLoader2 size={24} className="animate-spin text-primary" />
+          <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
+            <IconLoader2 size={18} className="animate-spin" /> Carregando clientes...
           </div>
+        ) : clients.length === 0 ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">
+            {search ? "Nenhum cliente encontrado para esta busca." : "Nenhum cliente cadastrado ainda."}
+          </p>
         ) : (
-          <Table variant="card">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Documento</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Telefone</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                    Nenhum cliente encontrado.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((client) => (
-                  <TableRow key={client.id} onClick={() => handleEditClient(client)}
-                  className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium">{client.name}</TableCell>
-                    <TableCell>
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                        {client.person_type === "PF" ? "Pessoa Física" : "Pessoa Jurídica"}
-                      </span>
-                    </TableCell>
-                    <TableCell>{client.document || "—"}</TableCell>
-                    <TableCell>{client.email}</TableCell>
-                    <TableCell>{client.phone || "—"}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                  <th className="px-4 py-3">Nome</th>
+                  <th className="px-4 py-3 max-sm:hidden">Documento</th>
+                  <th className="px-4 py-3 max-md:hidden">Contato</th>
+                  <th className="px-4 py-3 max-lg:hidden">Cidade</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {clients.map((client) => (
+                  <tr key={client.id} className="border-b border-border/50 last:border-0 hover:bg-foreground/[0.02]">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{client.name}</p>
+                      <p className="text-xs text-muted-foreground sm:hidden">{client.document ? maskCpfCnpj(client.document) : "Sem documento"}</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-sm:hidden">{client.document ? maskCpfCnpj(client.document) : "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-md:hidden">
+                      {client.phone ?? "—"}
+                      {client.email ? ` · ${client.email}` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-lg:hidden">
+                      {client.address ? `${client.address.city}/${client.address.state}` : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openVehicleFor(client)}
+                          aria-label={`Cadastrar veículo para ${client.name}`}
+                          title="Cadastrar veículo"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-status-done/10 hover:text-status-done"
+                        >
+                          <IconCar size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(client)}
+                          aria-label={`Editar ${client.name}`}
+                          title="Editar"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                        >
+                          <IconPencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(client)}
+                          aria-label={`Remover ${client.name}`}
+                          title="Remover"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <IconTrash size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="cliente(s)"
+            />
+          </>
         )}
-      </PageLayout>
+      </div>
+
+      <ClientFormDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        editing={editing}
+        onSaved={() => void load(page, debouncedSearch)}
+      />
+
+      <VehicleFormDialog
+        open={newVehicleOpen}
+        onClose={() => setNewVehicleOpen(false)}
+        defaultValues={
+          vehicleClient
+            ? { owner_id: vehicleClient.id, owner_label: vehicleClient.name }
+            : undefined
+        }
+        onSaved={() => void load(page, debouncedSearch)}
+      />
 
       <Dialog
-        open={dialogOpen}
-        onClose={() => {setDialogOpen(false); setSelectedClient(null);}}
-        title={selectedClient ? "Editar Cliente" : "Novo Cliente"}
-        onSubmit={handleSubmit}
-        submitLabel={selectedClient ? "Salvar alterações" : "Criar Cliente"}
-        loading={saving}
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Remover cliente"
+        onSubmit={() => void handleDelete()}
+        submitLabel="Remover"
+        loading={deleting}
+        destructive
+        maxWidth="max-w-md"
       >
-        <div className="grid gap-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Tipo</label>
-              <select
-                value={form.person_type}
-                onChange={(e) => setForm({ ...form, person_type: e.target.value as "PF" | "PJ" })}
-                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-              >
-                <option value="PF">Pessoa Física</option>
-                <option value="PJ">Pessoa Jurídica</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Nome *</label>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Nome completo"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Email *</label>
-              <Input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="email@exemplo.com"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Telefone</label>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">CPF / CNPJ *</label>
-              <Input
-                value={form.document}
-                onChange={(e) => setForm({ ...form, document: e.target.value })}
-                placeholder="000.000.000-00"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Responsável</label>
-              <Input
-                value={form.responsible}
-                onChange={(e) => setForm({ ...form, responsible: e.target.value })}
-                placeholder="Responsável / Frotista"
-              />
-            </div>
-          </div>
-
-          <div className="border-t border-border pt-4">
-            <p className="mb-3 text-sm font-semibold text-muted-foreground">Endereço</p>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">CEP *</label>
-                <Input
-                  value={form.address.cep}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, cep: e.target.value } })}
-                  placeholder="00000000"
-                  maxLength={8}
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="mb-1 block text-sm font-medium">Rua *</label>
-                <Input
-                  value={form.address.street}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, street: e.target.value } })}
-                  placeholder="Nome da rua"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Número *</label>
-                <Input
-                  value={form.address.number}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, number: e.target.value } })}
-                  placeholder="123"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Bairro *</label>
-                <Input
-                  value={form.address.neighborhood}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, neighborhood: e.target.value } })}
-                  placeholder="Bairro"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Cidade *</label>
-                <Input
-                  value={form.address.city}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, city: e.target.value } })}
-                  placeholder="Cidade"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">Estado *</label>
-                <Input
-                  value={form.address.state}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, state: e.target.value.toUpperCase() } })}
-                  placeholder="UF"
-                  maxLength={2}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Complemento</label>
-                <Input
-                  value={form.address.complement}
-                  onChange={(e) => setForm({ ...form, address: { ...form.address, complement: e.target.value } })}
-                  placeholder="Apto, Bloco, etc."
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+        <p className="text-sm">
+          Tem certeza que deseja remover <strong>{deleteTarget?.name}</strong>? O registro será
+          ocultado e poderá ser restaurado manualmente.
+        </p>
       </Dialog>
-    </>
+    </PageLayout>
   );
 }

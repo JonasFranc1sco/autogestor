@@ -1,244 +1,222 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { IconLoader2, IconPencil, IconTrash } from "@tabler/icons-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Dialog } from "@/components/layout/Dialog";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
-import { getVehicles, createVehicle, type Vehicle, updateVehicle } from "@/services/vehicle.service";
-import { getClients, type Client } from "@/services/client.service";
-import { IconLoader2 } from "@tabler/icons-react";
+import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
+import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  getVehiclesPaginated,
+  deleteVehicle,
+  type Vehicle,
+} from "@/services/vehicle.service";
+import { type Client } from "@/services/client.service";
+import { isInvalidPageError } from "@/services/pagination";
+import { extractApiErrorMessage } from "@/lib/errors";
 
 export default function VehiclesPage() {
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-  const [saving, setSaving] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Vehicle | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Vehicle | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [newClient, setNewClient] = useState<Client | null>(null);
+  const requestIdRef = useRef(0);
 
-  const [form, setForm] = useState({
-    owner: "",
-    license_plate: "",
-    brand: "",
-    model: "",
-    color: "",
-    chassis: "",
-  });
-
-  useEffect(() => {
-    loadData();
+  const load = useCallback(async (targetPage: number, query?: string) => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    try {
+      const data = await getVehiclesPaginated({ page: targetPage, search: query });
+      if (requestId !== requestIdRef.current) return;
+      setVehicles(data.results);
+      setTotalCount(data.count);
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      if (targetPage > 1 && isInvalidPageError(error)) {
+        setPage((current) => Math.max(1, current - 1));
+        return;
+      }
+      toast.error(extractApiErrorMessage(error, "Não foi possível carregar os veículos."));
+    } finally {
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
+    }
   }, []);
 
-  async function loadData() {
-    try {
-      setLoading(true);
-      const [vData, cData] = await Promise.all([getVehicles(), getClients()]);
-      setVehicles(vData);
-      setClients(cData);
-    } catch (error) {
-      console.error("Erro ao carregar veículos:", error);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (search === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [page, debouncedSearch, load]);
+
+  useEffect(() => {
+    if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
+      setEditing(null);
+      setNewClient(null);
+      setDialogOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return vehicles.filter(
-      (v) =>
-        v.license_plate.toLowerCase().includes(term) ||
-        v.brand.toLowerCase().includes(term) ||
-        v.model.toLowerCase().includes(term) ||
-        v.owner?.name?.toLowerCase().includes(term)
-    );
-  }, [vehicles, search]);
-
-  async function handleSubmit() {
-    if (!form.owner || !form.license_plate || !form.brand || !form.model) return;
-
-    try {
-      setSaving(true);
-
-      const data = {
-        ...form,
-        owner_id: form.owner,
-      };
-
-      if (selectedVehicle){
-        await updateVehicle(selectedVehicle.id, data);
-      } else {
-        await createVehicle(data);
-      }
-
-      setDialogOpen(false);
-      setSelectedVehicle(null);
-
-      setForm({
-        owner: "",
-        license_plate: "",
-        brand: "",
-        model: "",
-        color: "",
-        chassis: "",
-      });
-
-      await loadData();
-    } catch (error) {
-      console.error("Erro ao criar veículo:", error);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleEditVehicle(vehicle: Vehicle) {
-    setSelectedVehicle(vehicle);
-
-    setForm({
-      owner: vehicle.owner.id,
-      license_plate: vehicle.license_plate,
-      brand: vehicle.brand,
-      model: vehicle.model,
-      color: vehicle.color ?? "",
-      chassis: vehicle.chassis ?? "",
-    });
-
+  function openCreate() {
+    setEditing(null);
+    setNewClient(null);
     setDialogOpen(true);
   }
 
+  function openEdit(vehicle: Vehicle) {
+    setEditing(vehicle);
+    setNewClient(null);
+    setDialogOpen(true);
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteVehicle(deleteTarget.id);
+      toast.success("Veículo removido com sucesso.");
+      setDeleteTarget(null);
+      await load(page, debouncedSearch);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível remover o veículo."));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
-    <>
-      <PageLayout
-        title="Veículos"
-        searchPlaceholder="Buscar por placa, marca, modelo ou proprietário..."
-        searchValue={search}
-        onSearchChange={setSearch}
-        onAdd={() =>{
-          setSelectedVehicle(null);
-          setForm({
-            owner: "",
-            license_plate: "",
-            brand: "",
-            model: "",
-            color: "",
-            chassis: "",
-          });
-          setDialogOpen(true)
-        }}
-        addLabel="Novo Veículo"
-      >
+    <PageLayout
+      title="Veículos"
+      searchPlaceholder="Buscar por placa, marca, modelo ou proprietário..."
+      searchValue={search}
+      onSearchChange={setSearch}
+      onAdd={openCreate}
+      addLabel="Novo Veículo"
+    >
+      <div className="rounded-2xl border border-border bg-surface">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <IconLoader2 size={24} className="animate-spin text-primary" />
+          <div className="flex items-center justify-center gap-2 p-10 text-muted-foreground">
+            <IconLoader2 size={18} className="animate-spin" /> Carregando veículos...
           </div>
+        ) : vehicles.length === 0 ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">
+            {search ? "Nenhum veículo encontrado para esta busca." : "Nenhum veículo cadastrado ainda."}
+          </p>
         ) : (
-          <Table variant="card">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Placa</TableHead>
-                <TableHead>Marca</TableHead>
-                <TableHead>Modelo</TableHead>
-                <TableHead>Cor</TableHead>
-                <TableHead>Proprietário</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                    Nenhum veículo encontrado.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filtered.map((vehicle) => (
-                  <TableRow key={vehicle.id} onClick={() => handleEditVehicle(vehicle)}
-                  className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium font-mono">{vehicle.license_plate}</TableCell>
-                    <TableCell>{vehicle.brand}</TableCell>
-                    <TableCell>{vehicle.model}</TableCell>
-                    <TableCell>{vehicle.color}</TableCell>
-                    <TableCell>{vehicle.owner?.name || "—"}</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
+                  <th className="px-4 py-3">Placa</th>
+                  <th className="px-4 py-3">Veículo</th>
+                  <th className="px-4 py-3 max-md:hidden">Proprietário</th>
+                  <th className="px-4 py-3 max-lg:hidden">Ano</th>
+                  <th className="px-4 py-3 max-lg:hidden">Quilometragem</th>
+                  <th className="px-4 py-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vehicles.map((vehicle) => (
+                  <tr key={vehicle.id} className="border-b border-border/50 last:border-0 hover:bg-foreground/[0.02]">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{vehicle.license_plate ?? "Sem placa"}</p>
+                      <p className="text-xs text-muted-foreground md:hidden">{vehicle.owner.name}</p>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {vehicle.brand} {vehicle.model}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground max-md:hidden">{vehicle.owner.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{vehicle.year ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground max-lg:hidden">{vehicle.mileage ? `${vehicle.mileage} km` : "—"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(vehicle)}
+                          aria-label={`Editar ${vehicle.license_plate ?? "veículo"}`}
+                          title="Editar"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                        >
+                          <IconPencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(vehicle)}
+                          aria-label={`Remover ${vehicle.license_plate ?? "veículo"}`}
+                          title="Remover"
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <IconTrash size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination
+              currentPage={page}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              itemLabel="veículo(s)"
+            />
+          </>
         )}
-      </PageLayout>
+      </div>
+
+      <VehicleFormDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        editing={editing}
+        newClient={newClient}
+        onSaved={() => void load(page, debouncedSearch)}
+        onCreateClient={() => setClientDialogOpen(true)}
+      />
+
+      <ClientFormDialog
+        open={clientDialogOpen}
+        onClose={() => setClientDialogOpen(false)}
+        onSaved={(client) => {
+          setNewClient(client ?? null);
+        }}
+      />
 
       <Dialog
-        open={dialogOpen}
-        onClose={() => {setDialogOpen(false); setSelectedVehicle(null);}}
-        title={selectedVehicle ? "Editar Veículo" : "Novo Veículo"}
-        onSubmit={handleSubmit}
-        submitLabel={selectedVehicle ? "Salvar alterações" : "Criar Veículo"}
-        loading={saving}
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="Remover veículo"
+        onSubmit={() => void handleDelete()}
+        submitLabel="Remover"
+        loading={deleting}
+        destructive
+        maxWidth="max-w-md"
       >
-        <div className="grid gap-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Proprietário *</label>
-            <select
-              value={form.owner}
-              onChange={(e) => setForm({ ...form, owner: e.target.value })}
-              className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Selecione um cliente</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} — {c.document}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Placa *</label>
-              <Input
-                value={form.license_plate}
-                onChange={(e) => setForm({ ...form, license_plate: e.target.value.toUpperCase() })}
-                placeholder="ABC1D23"
-                maxLength={7}
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Marca *</label>
-              <Input
-                value={form.brand}
-                onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                placeholder="Ex: Honda"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">Modelo *</label>
-              <Input
-                value={form.model}
-                onChange={(e) => setForm({ ...form, model: e.target.value })}
-                placeholder="Ex: Civic"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Cor</label>
-              <Input
-                value={form.color}
-                onChange={(e) => setForm({ ...form, color: e.target.value })}
-                placeholder="Ex: Prata"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium">Chassi</label>
-            <Input
-              value={form.chassis}
-              onChange={(e) => setForm({ ...form, chassis: e.target.value })}
-              placeholder="Número do chassi"
-            />
-          </div>
-        </div>
+        <p className="text-sm">
+          Tem certeza que deseja remover <strong>{deleteTarget?.license_plate ?? "este veículo"}</strong>?
+          O registro será ocultado e poderá ser restaurado manualmente.
+        </p>
       </Dialog>
-    </>
+    </PageLayout>
   );
 }

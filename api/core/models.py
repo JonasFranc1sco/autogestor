@@ -1,25 +1,27 @@
 import uuid
 from django.db import models
 from django.core.validators import RegexValidator
+from phonenumber_field.modelfields import PhoneNumberField
 
 
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-     
+
     is_active = models.BooleanField(default=True)
-    
+
     class Meta:
         abstract = True
-        
+
+
 class Address(models.Model):
     cep_validator = RegexValidator(
         regex=r'^\d{8}$',
         message="CEP deve conter exatamente 8 digitos."
     )
-    
+
     cep = models.CharField(
         max_length=8,
         validators=[cep_validator],
@@ -30,5 +32,49 @@ class Address(models.Model):
     neighborhood = models.CharField(max_length=100)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=2)
-    complement = models.TextField(max_length=255)
-    
+    complement = models.TextField(max_length=255, blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.street}, {self.number} — {self.city}/{self.state}"
+
+
+def workshop_logo_upload_to(instance, filename):
+    import os
+
+    ext = os.path.splitext(filename)[1].lower()
+    return f"workshops/logos/{uuid.uuid4().hex}{ext}"
+
+
+class Workshop(BaseModel):
+    class Meta(BaseModel.Meta):
+        verbose_name = 'Oficina'
+        verbose_name_plural = 'Oficinas'
+        ordering = ['name']
+
+    name = models.CharField('Nome da oficina', max_length=155)
+    cnpj = models.CharField('CNPJ', max_length=18, unique=True, blank=True, null=True)
+    phone = PhoneNumberField(blank=True, null=True)
+    email = models.EmailField(max_length=254, blank=True, null=True)
+    logo = models.FileField(
+        upload_to=workshop_logo_upload_to,
+        blank=True,
+        null=True,
+        verbose_name='Logo',
+    )
+    address = models.OneToOneField(
+        Address,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='workshop',
+    )
+
+    def save(self, *args, **kwargs):
+        from core.validators import normalize_digits
+
+        if self.cnpj is not None:
+            self.cnpj = normalize_digits(self.cnpj) or None
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name

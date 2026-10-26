@@ -1,52 +1,98 @@
-import { useState } from "react";
-import Dashboard from "@/pages/Dashboard";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
+import { AppLayout } from "@/components/layout/AppLayout";
 import Login from "@/pages/Login";
+import Dashboard from "@/pages/Dashboard";
 import ClientsPage from "@/pages/Clients";
 import VehiclesPage from "@/pages/Vehicles";
 import ProductsPage from "@/pages/Products";
 import EmployeesPage from "@/pages/Employees";
+import ServicesPage from "@/pages/Services";
 import ServiceOrdersPage from "@/pages/ServiceOrders";
-import { useAuth } from "@/contexts/AuthContext";
-import { Sidebar, type Page } from "@/components/layout/Sidebar";
+import ServiceOrderDetailPage from "@/pages/ServiceOrderDetail";
+import ServiceOrderPrintPage from "@/pages/ServiceOrderPrint";
+import BudgetPage from "@/pages/Budget";
+import StockPage from "@/pages/Stock";
+import AgendaPage from "@/pages/Agenda";
+import CashRegisterPage from "@/pages/CashRegister";
+import ReportsPage from "@/pages/Reports";
+import UsersPage from "@/pages/Users";
+import SettingsPage from "@/pages/Settings";
+import RecoverPasswordPage from "@/pages/RecoverPassword";
 
 function App() {
-  const { accessToken, isLoading } = useAuth();
-  const [currentPage, setCurrentPage] = useState<Page>("dashboard");
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-muted-foreground">Carregando...</div>
-      </div>
-    );
-  }
-
-  if (!accessToken) {
-    return <Login />;
-  }
-
-  function renderPage() {
-    switch (currentPage) {
-      case "clientes":
-        return <ClientsPage />;
-      case "os":
-        return <ServiceOrdersPage />;
-      case "veiculos":
-        return <VehiclesPage />;
-      case "produtos":
-        return <ProductsPage />;
-      case "funcionarios":
-        return <EmployeesPage />;
-      default:
-        return <Dashboard />;
-    }
-  }
-
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
-      {renderPage()}
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <Toaster richColors position="top-right" />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/clientes" element={<ClientsPage />} />
+            <Route path="/veiculos" element={<VehiclesPage />} />
+            <Route path="/produtos" element={<ProductsPage />} />
+            <Route path="/servicos" element={<ServicesPage />} />
+            <Route
+              path="/funcionarios"
+              element={
+                <ProtectedRoute roles={["ADMIN", "MANAGER"]}>
+                  <EmployeesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/os" element={<ServiceOrdersPage />} />
+            <Route path="/os/:id" element={<ServiceOrderDetailPage />} />
+            <Route path="/orcamento" element={<BudgetPage />} />
+            <Route path="/estoque" element={<StockPage />} />
+            <Route path="/agenda" element={<AgendaPage />} />
+            <Route path="/caixa" element={<CashRegisterPage />} />
+            <Route
+              path="/relatorios"
+              element={
+                <ProtectedRoute roles={["ADMIN", "MANAGER"]}>
+                  <ReportsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/usuarios"
+              element={
+                <ProtectedRoute roles={["ADMIN", "MANAGER"]}>
+                  <UsersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/configuracoes"
+              element={
+                <ProtectedRoute roles={["ADMIN", "MANAGER"]}>
+                  <SettingsPage />
+                </ProtectedRoute>
+              }
+            />
+          </Route>
+          <Route path="/recuperar-senha" element={<RecoverPasswordPage />} />
+          <Route
+            path="/os/:id/imprimir"
+            element={
+              <ProtectedRoute>
+                <ServiceOrderPrintPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

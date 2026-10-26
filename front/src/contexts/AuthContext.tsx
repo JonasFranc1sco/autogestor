@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { refresh } from "@/services/auth.service";
+import { refresh, logout as logoutRequest, login as loginRequest } from "@/services/auth.service";
 import { getAccessToken, setAccessToken as setStoredAccessToken, subscribeToTokenChange } from "@/services/token.service";
 import { api } from "@/services/api";
 
@@ -8,16 +8,35 @@ export interface UserProfile {
   full_name: string;
   role: string;
   email: string;
+  workshop?: {
+    id: string;
+    name: string;
+    cnpj?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    logo_url?: string | null;
+    address?: {
+      id: string;
+      cep: string;
+      street: string;
+      number: string;
+      neighborhood: string;
+      city: string;
+      state: string;
+      complement: string | null;
+    } | null;
+  } | null;
   created_at: string;
   is_active: boolean;
 }
 
 interface AuthContextData {
   accessToken: string | null;
-  setAccessToken: (token: string | null) => void;
   user: UserProfile | null;
   isLoading: boolean;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextData | undefined>(undefined);
@@ -27,17 +46,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<UserProfile | null>(null);
 
-  function setAccessToken(token: string | null) {
-    setStoredAccessToken(token);
-  }
-
   const fetchProfile = useCallback(async () => {
+    const response = await api.get<UserProfile>("/api/profile/");
+    setUser(response.data);
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const response = await loginRequest({ email, password });
+    setStoredAccessToken(response.access);
+    await fetchProfile();
+  }, [fetchProfile]);
+
+  const logout = useCallback(async () => {
     try {
-      const response = await api.get<UserProfile>("/api/profile/");
-      setUser(response.data);
+      await logoutRequest();
     } catch {
-      setUser(null);
+      // cookie pode já estar inválido; a sessão local é limpa de qualquer forma
     }
+    setStoredAccessToken(null);
+    setUser(null);
   }, []);
 
   useEffect(() => {
@@ -53,10 +80,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function restoreSession() {
       try {
         const response = await refresh();
-        setAccessToken(response.access);
+        setStoredAccessToken(response.access);
         await fetchProfile();
       } catch {
-        setAccessToken(null);
+        setStoredAccessToken(null);
         setUser(null);
       } finally {
         setIsLoading(false);
@@ -66,13 +93,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     restoreSession();
   }, [fetchProfile]);
 
-  function logout() {
-    setAccessToken(null);
-    setUser(null);
-  }
-
   return (
-    <AuthContext.Provider value={{ accessToken, setAccessToken, user, isLoading, logout }}>
+    <AuthContext.Provider value={{ accessToken, user, isLoading, login, logout, refreshProfile: fetchProfile }}>
       {children}
     </AuthContext.Provider>
   );

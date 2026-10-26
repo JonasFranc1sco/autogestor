@@ -12,6 +12,8 @@ venv/
 env/
 ENV/
 
+*dev.md
+
 # Django
 *.sqlite3
 db.sqlite3
@@ -50,3 +52,7 @@ coverage.xml
 site/
 .ruff_cache/
 .mypy_cache/
+
+# Artefatos de teste/revisão
+front/e2e/results/
+CODE_REVIEW.md

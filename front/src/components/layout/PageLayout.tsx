@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { IconBell, IconUserCircle, IconSearch, IconPlus } from "@tabler/icons-react";
+import { IconSearch, IconPlus } from "@tabler/icons-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -25,36 +25,24 @@ export function PageLayout({
   loading = false,
 }: PageLayoutProps) {
   return (
-    <main className="flex-1 overflow-y-auto p-6">
-      <header className="mb-8 flex items-center justify-between">
-        <div className="flex items-center gap-4 text-lg font-semibold">
-          <span className="text-muted-foreground">{title}</span>
-        </div>
-
-        <div className="flex items-center gap-5 text-muted-foreground">
-          <button className="relative transition-colors hover:text-foreground">
-            <IconBell size={20} />
-            <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-primary" />
-          </button>
-
-          <button className="transition-colors hover:text-foreground">
-            <IconUserCircle size={20} />
-          </button>
-        </div>
+    <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <header className="mb-6">
+        <h1 className="text-xl font-semibold">{title}</h1>
       </header>
 
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-md">
           <IconSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={searchPlaceholder}
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-9"
+            aria-label={searchPlaceholder}
           />
         </div>
 
-        <Button onClick={onAdd} loading={loading}>
+        <Button onClick={onAdd} loading={loading} className="w-full sm:w-auto">
           <IconPlus size={16} />
           {addLabel}
         </Button>

@@ -57,16 +57,41 @@ Cookie `refresh_token` enviado automaticamente.
 
 ---
 
+### Auth — Registro (nova oficina)
+
+```
+POST /api/auth/register/
+```
+
+Cria a oficina e o usuário administrador (owner), retornando os mesmos
+tokens do login.
+
+**Request:**
+```json
+{
+  "workshop": { "name": "Oficina Nova", "cnpj": "12.345.678/0001-90" },
+  "full_name": "Maria Dona",
+  "email": "maria@oficinanova.com",
+  "password": "senhaForte123"
+}
+```
+
+**Response (201):**
+```json
+{ "access": "eyJ..." }
+```
+
+---
+
 ### Auth — Logout
 
 ```
 POST /api/auth/logout/
 ```
 
-**Request:**
-```json
-{ "refresh": "eyJ..." }
-```
+Usa o cookie `refresh_token` automaticamente (o body `{ "refresh": "..." }`
+ainda é aceito como alternativa). Invalida o token na blacklist e limpa o
+cookie.
 
 **Response:** `205 Reset Content`
 
@@ -75,9 +100,9 @@ POST /api/auth/logout/
 ### Profile
 
 ```
-GET  /api/profile/          — Obter perfil
-PATCH /api/profile/         — Atualizar nome
-POST /api/profile/change-password — Alterar senha
+GET  /api/profile/            — Obter perfil (inclui dados da oficina)
+PATCH /api/profile/           — Atualizar nome
+POST /api/profile/change-password/ — Alterar senha
 ```
 
 ---
@@ -94,16 +119,195 @@ DELETE /api/users/{id}/     — Soft delete (IsAdmin)
 
 ---
 
+### Workshop
+
+```
+GET   /api/workshop/ — Dados da oficina do usuário autenticado
+PATCH /api/workshop/ — Atualizar dados da oficina (IsManagerOrAdmin)
+```
+
+---
+
+### Dashboard
+
+```
+GET /api/dashboard/ — Indicadores da oficina
+```
+
+**Response (200):**
+```json
+{
+  "counts": {
+    "open_service_orders": 3,
+    "in_progress_service_orders": 2,
+    "done_this_month": 10,
+    "clients": 45,
+    "vehicles": 52
+  },
+  "revenue_this_month": "4500.00",
+  "recent_service_orders": [ ... ],
+  "low_stock_products": [ ... ]
+}
+```
+
+---
+
+### Ordens de Serviço — transição de status
+
+```
+POST /api/service-orders/{id}/change-status/
+```
+
+**Request:**
+```json
+{ "status": "IN_PROGRESS" }
+```
+
+Transições válidas: `OPEN → IN_PROGRESS | WAITING_PARTS | WAITING_CLIENT | CANCELLED`,
+`IN_PROGRESS → WAITING_PARTS | WAITING_CLIENT | DONE | CANCELLED`,
+`WAITING_* → IN_PROGRESS | CANCELLED`. `DONE` e `CANCELLED` são terminais.
+
+---
+
+### Estoque
+
+```
+GET  /api/stock-movements/        — Listar movimentações (filtros: product, movement_type)
+POST /api/stock-movements/        — Registrar entrada/saída/ajuste (Admin/Gerente)
+```
+
+---
+
+### Pagamentos da OS
+
+```
+GET    /api/service-orders/{id}/payments/          — Listar pagamentos
+POST   /api/service-orders/{id}/payments/          — Registrar pagamento (método, amount)
+DELETE /api/service-orders/{id}/payments/{pid}/    — Estornar (Admin/Gerente)
+```
+
+O valor do pagamento não pode exceder o saldo da OS.
+
+---
+
+### Caixa diário
+
+```
+GET /api/cash-register/?date=YYYY-MM-DD — Resumo por forma de pagamento
+```
+
+---
+
+### Histórico
+
+```
+GET /api/vehicles/{id}/service-orders/ — Ordens de serviço do veículo
+```
+
+A timeline (`events`) e os totais (`paid_total`, `balance`, `odometer`) vêm
+no detalhe da OS.
+
+---
+
+### Agenda
+
+```
+GET    /api/appointments/       — Listar (filtros: date_from, date_to, status, client, mechanic)
+POST   /api/appointments/       — Criar agendamento
+PATCH  /api/appointments/{id}/  — Atualizar
+DELETE /api/appointments/{id}/  — Remover (Admin/Gerente)
+POST   /api/appointments/{id}/change-status/ — Realizado | Não compareceu | Cancelado
+```
+
+---
+
+### Relatórios
+
+```
+GET /api/reports/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+```
+
+Resumo do período (ordens, faturamento, recebido), top serviços/peças,
+produtividade por mecânico e recebimentos por forma de pagamento (Admin/Gerente).
+
+---
+
+### Anexos da OS
+
+```
+GET    /api/service-orders/{id}/attachments/        — Listar anexos
+POST   /api/service-orders/{id}/attachments/        — Enviar arquivo (multipart, máx. 10 MB)
+DELETE /api/service-orders/{id}/attachments/{aid}/   — Remover anexo
+```
+
+Formatos aceitos: JPG, PNG, WEBP e PDF.
+
+---
+
+### Recuperação de senha
+
+```
+POST /api/auth/password-reset/          — Solicita link por e-mail (sempre 200)
+POST /api/auth/password-reset/confirm/  — Redefine com uid + token (válido por 24h)
+```
+
+---
+
+### Consulta de CEP
+
+```
+GET /api/utils/cep/?cep=01310100 — Endereço pelo CEP (BrasilAPI/ViaCEP)
+```
+
+Gratuito e sem configuração; retorna `street`, `neighborhood`, `city`, `state`.
+
+---
+
+### OpenAPI
+
+```
+GET /api/schema/ — Esquema OpenAPI
+GET /api/docs/   — Interface Swagger
+```
+
+---
+
+## Paginação e Busca
+
+Todas as listas usam paginação por página:
+
+```json
+{ "count": 120, "next": "...", "previous": null, "results": [ ... ] }
+```
+
+Parâmetros: `page`, `page_size` (máx. 200), `search`, `ordering` e filtros
+por campo (ex: `?status=OPEN`, `?client=<id>`).
+
+---
+
 ## Tabela Resumo
 
 | Método | Rota | Auth | Descrição |
 |--------|------|------|-----------|
 | POST | `/api/auth/login/` | Não | Login |
+| POST | `/api/auth/register/` | Não | Cadastrar oficina |
 | POST | `/api/auth/refresh/` | Cookie | Renovar token |
-| POST | `/api/auth/logout/` | JWT | Logout |
+| POST | `/api/auth/logout/` | JWT + Cookie | Logout |
 | GET | `/api/profile/` | JWT | Perfil |
 | PATCH | `/api/profile/` | JWT | Atualizar perfil |
-| POST | `/api/profile/change-password` | JWT | Alterar senha |
+| POST | `/api/profile/change-password/` | JWT | Alterar senha |
+| GET | `/api/workshop/` | JWT | Dados da oficina |
+| GET | `/api/dashboard/` | JWT | Indicadores da oficina |
+| GET | `/api/stock-movements/` | JWT | Movimentações de estoque |
+| POST | `/api/stock-movements/` | Admin/Gerente | Registrar movimentação |
+| GET | `/api/cash-register/` | JWT | Caixa diário |
+| GET | `/api/vehicles/{id}/service-orders/` | JWT | Histórico do veículo |
+| GET | `/api/appointments/` | JWT | Listar agendamentos |
+| POST | `/api/appointments/` | JWT | Criar agendamento |
+| GET | `/api/reports/` | Admin/Gerente | Relatórios gerenciais |
+| GET | `/api/schema/` | JWT | Esquema OpenAPI |
+| GET | `/api/docs/` | JWT | Swagger UI |
+| POST | `/api/auth/password-reset/` | Não | Recuperação de senha |
 | GET | `/api/users/` | IsManager | Listar |
 | POST | `/api/users/` | IsAdmin | Criar |
 | GET | `/api/users/{id}/` | IsOwnerOrAdmin | Detalhes |

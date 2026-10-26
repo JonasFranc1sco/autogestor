@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
-from core.models import BaseModel
+from core.models import BaseModel, Workshop
 from users.managers import UserManager
     
 # User Model
@@ -15,6 +15,14 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.ATTENDANT)
     is_staff = models.BooleanField(default=False)
+    workshop = models.ForeignKey(
+        Workshop,
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        related_name='members',
+        verbose_name='Oficina',
+    )
     
     objects: UserManager = UserManager() # type: ignore[assignment]
     

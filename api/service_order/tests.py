@@ -1,42 +1,80 @@
 from decimal import Decimal
-from django.test import TestCase
+
+from rest_framework import status
+from rest_framework.test import APITestCase
+
 from clients.models import Client
-from vehicles.models import Vehicle
+from core.models import Workshop
 from employees.models import Employee
 from products.models import Product
+from service_order.models import ServiceOrder, ServiceOrderProduct, ServiceOrderService
 from services.models import Service
-from service_order.models import ServiceOrder, ServiceOrderService, ServiceOrderProduct
-from service_order.serializers import ServiceOrderSerializer
+from users.models import User, Role
+from vehicles.models import Vehicle
+
+OS_URL = "/api/service-orders/"
 
 
-class ServiceOrderTests(TestCase):
+class ServiceOrderBaseTestCase(APITestCase):
     def setUp(self):
-        self.client = Client.objects.create(name="João Silva", email="joao@teste.com")
+        self.workshop = Workshop.objects.create(name="Oficina A")
+        self.other_workshop = Workshop.objects.create(name="Oficina B")
+
+        self.admin = User.objects.create_user(
+            email="admin@oficina.com",
+            password="senhaForte123",
+            full_name="Admin",
+            role=Role.ADMIN,
+            workshop=self.workshop,
+        )
+        self.mechanic_user = User.objects.create_user(
+            email="mecanico@oficina.com",
+            password="senhaForte123",
+            full_name="Mecânico",
+            role=Role.MECHANIC,
+            workshop=self.workshop,
+        )
+        self.client_obj = Client.objects.create(
+            workshop=self.workshop,
+            name="João Silva",
+            document="12345678901",
+        )
         self.vehicle = Vehicle.objects.create(
-            owner=self.client,
+            workshop=self.workshop,
+            owner=self.client_obj,
             brand="Volkswagen",
             model="Gol",
             license_plate="BRA2E19",
         )
-        self.mechanic = Employee.objects.create(name="Marcos Silva")
+        self.mechanic = Employee.objects.create(
+            workshop=self.workshop,
+            name="Marcos Silva",
+        )
         self.product = Product.objects.create(
+            workshop=self.workshop,
             name="Filtro de Óleo",
             cost_price=Decimal("20.00"),
             sale_price=Decimal("40.00"),
             margin_percentage=Decimal("100.00"),
             stock_quantity=15,
         )
+        self.catalog_service = Service.objects.create(
+            workshop=self.workshop,
+            name="Alinhamento",
+            sale_price=Decimal("80.00"),
+            cost_price=Decimal("30.00"),
+        )
+        self.client.force_authenticate(self.admin)
 
-    def test_create_service_order_with_mechanic_services_and_products(self):
+    def payload(self, **overrides):
         data = {
-            "client_id": str(self.client.id),
+            "client_id": str(self.client_obj.id),
             "vehicle_id": str(self.vehicle.id),
-            "mechanic_id": str(self.mechanic.id),
             "description": "Revisão preventiva",
-            "observations": "Cliente solicitou entrega até as 17h",
             "services": [
                 {
                     "service_name": "Troca de óleo e filtro",
+                    "mechanic_id": str(self.mechanic.id),
                     "price": "100.00",
                     "discount": "10.00",
                 }
@@ -44,44 +82,1133 @@ class ServiceOrderTests(TestCase):
             "products": [
                 {
                     "product_id": str(self.product.id),
+                    "seller_id": str(self.admin.id),
                     "quantity": 2,
                     "price": "40.00",
                     "discount": "5.00",
                 }
             ],
         }
+        data.update(overrides)
+        return data
 
-        serializer = ServiceOrderSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        order = serializer.save()
 
-        self.assertEqual(order.client, self.client)
+class ServiceOrderCreateTests(ServiceOrderBaseTestCase):
+    def test_create_with_services_and_products_calculates_total(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        order = ServiceOrder.objects.get()
+        self.assertEqual(order.client, self.client_obj)
         self.assertEqual(order.vehicle, self.vehicle)
-        self.assertEqual(order.mechanic, self.mechanic)
         self.assertEqual(order.services.count(), 1)
         self.assertEqual(order.products.count(), 1)
 
-        # Service total: 100.00 - 10.00 = 90.00
         service_item = order.services.first()
         self.assertEqual(service_item.total_price, Decimal("90.00"))
+        self.assertEqual(service_item.mechanic, self.mechanic)
 
-        # Product total: (40.00 * 2) - 5.00 = 75.00
         product_item = order.products.first()
         self.assertEqual(product_item.total_price, Decimal("75.00"))
+        self.assertEqual(product_item.seller, self.admin)
 
-        # Grand total: 90.00 + 75.00 = 165.00
         self.assertEqual(order.total_price, Decimal("165.00"))
+        self.assertEqual(order.number, 1)
+        self.assertEqual(order.created_by, self.admin)
 
-    def test_create_service_order_without_mechanic(self):
-        data = {
-            "client_id": str(self.client.id),
-            "vehicle_id": str(self.vehicle.id),
-            "description": "Diagnóstico inicial",
-        }
+    def test_create_without_items(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(services=[], products=[]),
+            format="json",
+        )
 
-        serializer = ServiceOrderSerializer(data=data)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        order = serializer.save()
-
-        self.assertIsNone(order.mechanic)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        order = ServiceOrder.objects.get()
         self.assertEqual(order.total_price, Decimal("0.00"))
+
+    def test_total_price_from_payload_is_ignored(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(services=[], products=[], total_price="999.00"),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(ServiceOrder.objects.get().total_price, Decimal("0.00"))
+
+    def test_vehicle_of_another_client_rejected(self):
+        other_client = Client.objects.create(
+            workshop=self.workshop,
+            name="Maria Souza",
+            document="11122233344",
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(client_id=str(other_client.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_vehicle_of_another_workshop_rejected(self):
+        foreign_client = Client.objects.create(
+            workshop=self.other_workshop,
+            name="Cliente Fora",
+            document="99999999999",
+        )
+        foreign_vehicle = Vehicle.objects.create(
+            workshop=self.other_workshop,
+            owner=foreign_client,
+            brand="Fiat",
+            model="Uno",
+            license_plate="XYZ9Z99",
+        )
+
+        response = self.client.post(
+            OS_URL,
+            self.payload(vehicle_id=str(foreign_vehicle.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_service_item_without_service_or_name_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(services=[{"price": "100.00"}], products=[]),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_discount_greater_than_price_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_name": "Troca", "price": "50.00", "discount": "80.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_product_quantity_less_than_one_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[{"product_id": str(self.product.id), "quantity": 0, "price": "40.00"}],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_with_catalog_service(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_id": str(self.catalog_service.id), "price": "80.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        order = ServiceOrder.objects.get()
+        item = order.services.get()
+        self.assertEqual(item.service, self.catalog_service)
+        self.assertEqual(order.total_price, Decimal("80.00"))
+
+    def test_duplicate_service_by_name_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[
+                    {"service_name": "Troca de óleo e filtro", "price": "100.00"},
+                    {"service_name": "Troca de óleo e filtro", "price": "100.00"},
+                ],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_mechanic_cannot_create_service_order(self):
+        self.client.force_authenticate(self.mechanic_user)
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_duplicate_service_items_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[
+                    {"service_id": str(self.catalog_service.id), "price": "80.00"},
+                    {"service_id": str(self.catalog_service.id), "price": "80.00"},
+                ],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    def test_negative_service_discount_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_name": "Troca", "price": "100.00", "discount": "-20.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_negative_service_price_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_name": "Troca", "price": "-100.00", "discount": "-100.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_negative_product_discount_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[
+                    {
+                        "product_id": str(self.product.id),
+                        "quantity": 1,
+                        "price": "40.00",
+                        "discount": "-10.00",
+                    }
+                ],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+    def test_number_is_sequential_per_workshop(self):
+        self.client.post(OS_URL, self.payload(), format="json")
+        self.client.post(OS_URL, self.payload(), format="json")
+
+        other_admin = User.objects.create_user(
+            email="admin@outra.com",
+            password="senhaForte123",
+            full_name="Admin B",
+            role=Role.ADMIN,
+            workshop=self.other_workshop,
+        )
+        other_client = Client.objects.create(
+            workshop=self.other_workshop,
+            name="Cliente Fora",
+        )
+        other_vehicle = Vehicle.objects.create(
+            workshop=self.other_workshop,
+            owner=other_client,
+            brand="Fiat",
+            model="Uno",
+            license_plate="XYZ9Z99",
+        )
+
+        self.client.force_authenticate(other_admin)
+        response = self.client.post(
+            OS_URL,
+            {
+                "client_id": str(other_client.id),
+                "vehicle_id": str(other_vehicle.id),
+                "services": [],
+                "products": [],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(
+            list(
+                ServiceOrder.objects.filter(workshop=self.workshop)
+                .values_list("number", flat=True)
+                .order_by("number")
+            ),
+            [1, 2],
+        )
+        self.assertEqual(
+            ServiceOrder.objects.get(workshop=self.other_workshop).number, 1
+        )
+
+    def test_inactive_related_records_rejected_on_create(self):
+        inactive_client = Client.objects.create(
+            workshop=self.workshop,
+            name="Cliente Inativo",
+            document="55544433322",
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(client_id=str(inactive_client.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("client_id", response.data)
+
+        inactive_vehicle = Vehicle.objects.create(
+            workshop=self.workshop,
+            owner=self.client_obj,
+            brand="Fiat",
+            model="Palio",
+            license_plate="ABC1D23",
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(vehicle_id=str(inactive_vehicle.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("vehicle_id", response.data)
+
+        inactive_mechanic = Employee.objects.create(
+            workshop=self.workshop,
+            name="Mecânico Inativo",
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[
+                    {
+                        "service_id": str(self.catalog_service.id),
+                        "mechanic_id": str(inactive_mechanic.id),
+                        "price": "80.00",
+                    }
+                ],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        inactive_service = Service.objects.create(
+            workshop=self.workshop,
+            name="Serviço Inativo",
+            sale_price=Decimal("50.00"),
+            cost_price=Decimal("20.00"),
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_id": str(inactive_service.id), "price": "50.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        inactive_product = Product.objects.create(
+            workshop=self.workshop,
+            name="Peça Inativa",
+            cost_price=Decimal("10.00"),
+            sale_price=Decimal("20.00"),
+            stock_quantity=10,
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[{"product_id": str(inactive_product.id), "quantity": 1, "price": "20.00"}],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        inactive_seller = User.objects.create_user(
+            email="inativo@oficina.com",
+            password="senhaForte123",
+            full_name="Vendedor Inativo",
+            role=Role.ATTENDANT,
+            workshop=self.workshop,
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[
+                    {
+                        "product_id": str(self.product.id),
+                        "seller_id": str(inactive_seller.id),
+                        "quantity": 1,
+                        "price": "40.00",
+                    }
+                ],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ServiceOrderUpdateTests(ServiceOrderBaseTestCase):
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return response.data["id"]
+
+    def test_update_replaces_items_and_recalculates_total(self):
+        order_id = self.create_order()
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {
+                "services": [
+                    {"service_id": str(self.catalog_service.id), "price": "80.00", "discount": "0.00"}
+                ],
+                "products": [
+                    {"product_id": str(self.product.id), "quantity": 1, "price": "40.00", "discount": "0.00"}
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        order = ServiceOrder.objects.get(id=order_id)
+        self.assertEqual(order.services.count(), 1)
+        self.assertEqual(order.products.count(), 1)
+        self.assertEqual(order.total_price, Decimal("120.00"))
+
+    def test_patch_only_services_keeps_products(self):
+        order_id = self.create_order()
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"services": [{"service_name": "Troca de óleo e filtro", "price": "50.00"}]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        order = ServiceOrder.objects.get(id=order_id)
+        self.assertEqual(order.products.count(), 1)
+        self.assertEqual(order.total_price, Decimal("125.00"))
+
+    def test_patch_only_products_keeps_services(self):
+        order_id = self.create_order()
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"products": [{"product_id": str(self.product.id), "quantity": 1, "price": "40.00"}]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        order = ServiceOrder.objects.get(id=order_id)
+        self.assertEqual(order.services.count(), 1)
+        self.assertEqual(order.total_price, Decimal("130.00"))
+
+    def test_update_without_items_keeps_existing(self):
+        order_id = self.create_order()
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"description": "Descrição atualizada"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        order = ServiceOrder.objects.get(id=order_id)
+        self.assertEqual(order.services.count(), 1)
+        self.assertEqual(order.total_price, Decimal("165.00"))
+        self.assertEqual(order.description, "Descrição atualizada")
+
+    def test_update_ignores_total_price_from_payload(self):
+        order_id = self.create_order()
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"total_price": "9999.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(ServiceOrder.objects.get(id=order_id).total_price, Decimal("165.00"))
+
+    def test_mechanic_cannot_edit_items(self):
+        order_id = self.create_order()
+        self.client.force_authenticate(self.mechanic_user)
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"services": []},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_mechanic_can_update_observations(self):
+        order_id = self.create_order()
+        self.client.force_authenticate(self.mechanic_user)
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"observations": "Aguardando autorização do cliente"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(
+            ServiceOrder.objects.get(id=order_id).observations,
+            "Aguardando autorização do cliente",
+        )
+
+
+class ServiceOrderStatusTests(ServiceOrderBaseTestCase):
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return ServiceOrder.objects.get(id=response.data["id"])
+
+    def test_valid_transition(self):
+        order = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/change-status/",
+            {"status": ServiceOrder.Status.IN_PROGRESS},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        order.refresh_from_db()
+        self.assertEqual(order.status, ServiceOrder.Status.IN_PROGRESS)
+
+    def test_open_to_done_is_rejected(self):
+        order = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/change-status/",
+            {"status": ServiceOrder.Status.DONE},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_done_sets_closed_at_and_is_terminal(self):
+        order = self.create_order()
+        order.status = ServiceOrder.Status.IN_PROGRESS
+        order.save()
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/change-status/",
+            {"status": ServiceOrder.Status.DONE},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        order.refresh_from_db()
+        self.assertIsNotNone(order.closed_at)
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/change-status/",
+            {"status": ServiceOrder.Status.IN_PROGRESS},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_invalid_status_rejected(self):
+        order = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/change-status/",
+            {"status": "QUALQUER"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_mechanic_can_change_status(self):
+        order = self.create_order()
+        self.client.force_authenticate(self.mechanic_user)
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/change-status/",
+            {"status": ServiceOrder.Status.IN_PROGRESS},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+
+class ServiceOrderAccessTests(ServiceOrderBaseTestCase):
+    def test_page_size_param_is_respected(self):
+        for _ in range(3):
+            self.client.post(OS_URL, self.payload(), format="json")
+
+        response = self.client.get(OS_URL, {"page_size": 2})
+        self.assertEqual(len(response.data["results"]), 2)
+        self.assertEqual(response.data["count"], 3)
+
+    def test_list_scoped_by_workshop(self):
+        self.client.post(OS_URL, self.payload(), format="json")
+
+        other_admin = User.objects.create_user(
+            email="admin@outra.com",
+            password="senhaForte123",
+            full_name="Admin B",
+            role=Role.ADMIN,
+            workshop=self.other_workshop,
+        )
+        self.client.force_authenticate(other_admin)
+        response = self.client.get(OS_URL)
+
+        self.assertEqual(response.data["count"], 0)
+
+    def test_retrieve_from_other_workshop_returns_404(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        other_admin = User.objects.create_user(
+            email="admin@outra.com",
+            password="senhaForte123",
+            full_name="Admin B",
+            role=Role.ADMIN,
+            workshop=self.other_workshop,
+        )
+        self.client.force_authenticate(other_admin)
+        response = self.client.get(f"{OS_URL}{order_id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_restricted_to_admin_or_manager(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        self.client.force_authenticate(self.mechanic_user)
+        response = self.client.delete(f"{OS_URL}{order_id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(f"{OS_URL}{order_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+
+class ServiceOrderStockIntegrationTests(ServiceOrderBaseTestCase):
+    def test_create_order_deducts_product_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)  # 15 - 2
+
+        movements = self.product.stock_movements.all()
+        self.assertEqual(movements.count(), 1)
+        self.assertEqual(movements.first().quantity, -2)
+
+    def test_oversell_rejected(self):
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[{"product_id": str(self.product.id), "quantity": 999, "price": "40.00"}],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+    def test_replace_products_returns_and_deducts_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {
+                "products": [
+                    {"product_id": str(self.product.id), "quantity": 1, "price": "40.00"}
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 14)  # devolve 2, baixa 1
+
+    def test_cancel_order_returns_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/change-status/",
+            {"status": "IN_PROGRESS"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/change-status/",
+            {"status": "CANCELLED"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+    def test_delete_order_returns_stock(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        order_id = response.data["id"]
+
+        response = self.client.delete(f"{OS_URL}{order_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+
+class ServiceOrderPaymentTests(ServiceOrderBaseTestCase):
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return response.data["id"]
+
+    def test_register_payment_and_balance(self):
+        order_id = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "100.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        response = self.client.get(f"{OS_URL}{order_id}/")
+        self.assertEqual(response.data["paid_total"], "100.00")
+        self.assertEqual(response.data["balance"], "65.00")  # 165 - 100
+
+    def test_payment_amount_must_be_positive(self):
+        order_id = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "0.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_payment_blocked_on_cancelled_order(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "CANCELLED"}, format="json"
+        )
+
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "CASH", "amount": "50.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_refund_payment_restricted(self):
+        order_id = self.create_order()
+        response = self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "CASH", "amount": "50.00"},
+            format="json",
+        )
+        payment_id = response.data["id"]
+
+        self.client.force_authenticate(self.mechanic_user)
+        response = self.client.delete(f"{OS_URL}{order_id}/payments/{payment_id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(f"{OS_URL}{order_id}/payments/{payment_id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_cash_register_summary(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "100.00"},
+            format="json",
+        )
+        self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "CASH", "amount": "50.00"},
+            format="json",
+        )
+
+        response = self.client.get("/api/cash-register/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["total"], "150.00")
+        self.assertEqual(response.data["payments_count"], 2)
+        methods = {item["method"]: item["total"] for item in response.data["methods"]}
+        self.assertEqual(methods["PIX"], "100.00")
+        self.assertEqual(methods["CASH"], "50.00")
+
+    def test_status_change_records_event(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+
+        response = self.client.get(f"{OS_URL}{order_id}/")
+        events = response.data["events"]
+        self.assertGreaterEqual(len(events), 2)  # criação + transição
+        self.assertEqual(events[0]["to_status"], "OPEN")
+        self.assertEqual(events[-1]["to_status"], "IN_PROGRESS")
+
+    def test_closed_order_items_cannot_change(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "DONE"}, format="json"
+        )
+
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"products": []},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_odometer_saves(self):
+        order_id = self.create_order()
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"odometer": 120000},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["odometer"], 120000)
+
+    def test_vehicle_history_endpoint(self):
+        self.create_order()
+        response = self.client.get(f"/api/vehicles/{self.vehicle.id}/service-orders/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["number"], 1)
+    
+    def test_cannot_reduce_order_total_below_paid_total(self):
+        order_id = self.create_order()  # total_price = 165.00
+
+        # Registra pagamento parcial de R$ 100,00
+        self.client.post(
+            f"{OS_URL}{order_id}/payments/",
+            {"method": "PIX", "amount": "100.00"},
+            format="json",
+        )
+
+        # Tenta reduzir os itens da OS para R$ 50,00 (< R$ 100,00 já pagos)
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {
+                "services": [{"service_name": "Serviço menor", "price": "50.00"}],
+                "products": [],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Verifica que o rollback preservou o total original (165.00) e o estoque (13)
+        order = ServiceOrder.objects.get(id=order_id)
+        self.assertEqual(order.total_price, Decimal("165.00"))
+        self.assertEqual(order.balance, Decimal("65.00"))
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+    def test_closed_order_general_fields_cannot_change(self):
+        order_id = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order_id}/change-status/", {"status": "DONE"}, format="json"
+        )
+
+        # Tenta alterar descrição, observações ou hodômetro de uma OS concluída
+        response = self.client.patch(
+            f"{OS_URL}{order_id}/",
+            {"description": "Tentativa de edição após conclusão", "odometer": 999999},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ServiceOrderStockReleaseIdempotencyTests(ServiceOrderBaseTestCase):
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return ServiceOrder.objects.get(id=response.data["id"])
+
+    def test_cancel_then_delete_returns_stock_only_once(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "CANCELLED"}, format="json"
+        )
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+        response = self.client.delete(f"{OS_URL}{order.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 15)
+
+    def test_delete_done_order_does_not_return_stock(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "IN_PROGRESS"}, format="json"
+        )
+        self.client.post(
+            f"{OS_URL}{order.id}/change-status/", {"status": "DONE"}, format="json"
+        )
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+        response = self.client.delete(f"{OS_URL}{order.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+    def test_delete_order_with_payments_rejected(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/payments/",
+            {"method": "CASH", "amount": "10.00"},
+            format="json",
+        )
+
+        response = self.client.delete(f"{OS_URL}{order.id}/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.assertTrue(ServiceOrder.objects.filter(id=order.id).exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, 13)
+
+    def test_payment_above_balance_rejected(self):
+        order = self.create_order()
+
+        response = self.client.post(
+            f"{OS_URL}{order.id}/payments/",
+            {"method": "CASH", "amount": "9999.00"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_payment_registers_event(self):
+        order = self.create_order()
+        self.client.post(
+            f"{OS_URL}{order.id}/payments/",
+            {"method": "PIX", "amount": "10.00"},
+            format="json",
+        )
+
+        response = self.client.get(f"{OS_URL}{order.id}/")
+        descriptions = [event["description"] for event in response.data["events"]]
+        self.assertTrue(any("Pagamento" in item for item in descriptions))
+
+
+class ServiceOrderAttachmentAndWarrantyTests(ServiceOrderBaseTestCase):
+    VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+    VALID_PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+    VALID_WEBP_BYTES = b"RIFF\x1a\x00\x00\x00WEBPVP8 \x0e\x00\x00\x000\x01\x00\x9d\x01*\x01\x00\x01\x00\x00"
+    VALID_PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"
+
+    def create_order(self):
+        response = self.client.post(OS_URL, self.payload(), format="json")
+        return response.data["id"]
+
+    def test_add_and_list_attachments(self):
+        order_id = self.create_order()
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        file = SimpleUploadedFile("foto.jpg", self.VALID_JPEG_BYTES, content_type="image/jpeg")
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": file, "description": "Foto do para-choque"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        attachment_id = response.data["id"]
+        expected_suffix = f"/api/service-orders/{order_id}/attachments/{attachment_id}/download/"
+        self.assertTrue(response.data["file_url"].endswith(expected_suffix))
+        self.assertTrue(response.data["file"].endswith(expected_suffix))
+
+        response = self.client.get(f"{OS_URL}{order_id}/attachments/")
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["description"], "Foto do para-choque")
+
+        self.client.delete(f"{OS_URL}{order_id}/attachments/{attachment_id}/")
+
+    def test_delete_attachment(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        file = SimpleUploadedFile("foto.jpg", self.VALID_JPEG_BYTES, content_type="image/jpeg")
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": file, "description": "Laudo"},
+            format="multipart",
+        )
+        attachment_id = response.data["id"]
+
+        response = self.client.delete(
+            f"{OS_URL}{order_id}/attachments/{attachment_id}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        response = self.client.get(f"{OS_URL}{order_id}/attachments/")
+        self.assertEqual(len(response.data), 0)
+
+    def test_rejects_arbitrary_content_renamed_as_jpg_or_pdf(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        fake_jpg = SimpleUploadedFile(
+            "malicioso.jpg",
+            b"<html><script>alert('xss')</script></html>",
+            content_type="image/jpeg",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": fake_jpg, "description": "Falso JPG"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        fake_pdf = SimpleUploadedFile(
+            "script.pdf",
+            b"#!/bin/sh\nrm -rf /",
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": fake_pdf, "description": "Falso PDF"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rejects_mismatched_extension_and_binary_signature(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        png_as_pdf = SimpleUploadedFile(
+            "arquivo.pdf",
+            self.VALID_PNG_BYTES,
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": png_as_pdf},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rejects_pdf_with_embedded_javascript(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        malicious_pdf = SimpleUploadedFile(
+            "laudo.pdf",
+            b"%PDF-1.4\n1 0 obj\n<< /Type /Action /S /JavaScript /JS (app.alert(1)) >>\nendobj\n%%EOF",
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": malicious_pdf},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_accepts_valid_png_webp_and_pdf(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        samples = [
+            ("imagem.png", self.VALID_PNG_BYTES, "image/png"),
+            ("imagem.webp", self.VALID_WEBP_BYTES, "image/webp"),
+            ("laudo.pdf", self.VALID_PDF_BYTES, "application/pdf"),
+        ]
+        for filename, content, mime in samples:
+            uploaded = SimpleUploadedFile(filename, content, content_type=mime)
+            response = self.client.post(
+                f"{OS_URL}{order_id}/attachments/",
+                {"file": uploaded},
+                format="multipart",
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+            self.client.delete(f"{OS_URL}{order_id}/attachments/{response.data['id']}/")
+
+    def test_download_attachment_works_with_debug_false_and_enforces_tenant_and_auth(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from service_order.models import ServiceOrderAttachment
+
+        order_id = self.create_order()
+        file = SimpleUploadedFile("foto.jpg", self.VALID_JPEG_BYTES, content_type="image/jpeg")
+        upload_resp = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": file, "description": "Foto autenticada"},
+            format="multipart",
+        )
+        self.assertEqual(upload_resp.status_code, status.HTTP_201_CREATED, upload_resp.data)
+        attachment_id = upload_resp.data["id"]
+        download_url = f"{OS_URL}{order_id}/attachments/{attachment_id}/download/"
+        attachment_obj = ServiceOrderAttachment.objects.get(pk=attachment_id)
+
+        try:
+            with override_settings(DEBUG=False):
+                # 1. Usuário autenticado da mesma oficina consegue baixar com DEBUG=False
+                dl_resp = self.client.get(download_url)
+                self.assertEqual(dl_resp.status_code, status.HTTP_200_OK)
+                self.assertEqual(b"".join(dl_resp.streaming_content), self.VALID_JPEG_BYTES)
+                self.assertEqual(dl_resp["Content-Type"], "image/jpeg")
+                self.assertEqual(dl_resp["X-Content-Type-Options"], "nosniff")
+                self.assertIn("sandbox", dl_resp["Content-Security-Policy"])
+
+                # 2. Requisição sem autenticação recebe 401
+                self.client.force_authenticate(user=None)
+                unauth_resp = self.client.get(download_url)
+                self.assertEqual(unauth_resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+                # 3. Acesso direto via rota estática /media/service_orders/... é bloqueado (404)
+                direct_media_resp = self.client.get(f"/media/{attachment_obj.file.name}")
+                self.assertEqual(direct_media_resp.status_code, status.HTTP_404_NOT_FOUND)
+
+                # 4. Usuário autenticado de outra oficina recebe 404 (isolamento multi-tenant)
+                other_admin = User.objects.create_user(
+                    email="outro@oficina.com",
+                    password="senhaForte123",
+                    full_name="Outro Admin",
+                    role=Role.ADMIN,
+                    workshop=self.other_workshop,
+                )
+                self.client.force_authenticate(other_admin)
+                cross_tenant_resp = self.client.get(download_url)
+                self.assertEqual(cross_tenant_resp.status_code, status.HTTP_404_NOT_FOUND)
+        finally:
+            self.client.force_authenticate(self.admin)
+            self.client.delete(f"{OS_URL}{order_id}/attachments/{attachment_id}/")
+
+    def test_warranty_days_visible(self):
+        self.catalog_service.warranty_days = 180
+        self.catalog_service.save()
+
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_id": str(self.catalog_service.id), "price": "80.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        item = response.data["services"][0]
+        self.assertEqual(item["service"]["warranty_days"], 180)

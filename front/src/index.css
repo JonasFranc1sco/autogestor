@@ -1,4 +1,20 @@
 @import "tailwindcss";
+
+/* Transição circular de tema (View Transitions API): desativa o crossfade
+   padrão e mantém o tema novo por cima enquanto o círculo se expande. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2147483647;
+}
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
@@ -40,6 +56,8 @@
     --color-foreground: var(--foreground);
     --color-background: var(--background);
     --color-surface: var(--surface);
+    --color-status-open: var(--status-open);
+    --color-status-cancelled: var(--status-cancelled);
     --color-status-progress: var(--status-progress);
     --color-status-waiting: var(--status-waiting);
     --color-status-client: var(--status-client);
@@ -73,6 +91,8 @@
     --input: oklch(0.9 0 0);
     --ring: oklch(0.65 0.2 40);
     --surface: oklch(0.97 0 0);
+    --status-open: oklch(0.6 0.15 250);
+    --status-cancelled: oklch(0.55 0.02 260);
     --status-progress: oklch(0.65 0.2 40);
     --status-waiting: oklch(0.75 0.15 85);
     --status-client: oklch(0.6 0.15 250);
@@ -113,6 +133,8 @@
     --input: oklch(0.2 0 0);
     --ring: oklch(0.65 0.2 40);
     --surface: oklch(0.11 0 0);
+    --status-open: oklch(0.6 0.15 250);
+    --status-cancelled: oklch(0.55 0.02 260);
     --status-progress: oklch(0.65 0.2 40);
     --status-waiting: oklch(0.75 0.15 85);
     --status-client: oklch(0.6 0.15 250);
@@ -152,3 +174,5 @@
 .animate-logo-pulse {
   animation: logo-pulse 3s ease-in-out infinite;
 }
+
+@page { margin:0; }

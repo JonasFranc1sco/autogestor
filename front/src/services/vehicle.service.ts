@@ -1,32 +1,62 @@
 import { api } from "./api";
+import { DEFAULT_PAGE_SIZE, LIST_PAGE_SIZE, type Paginated } from "./pagination";
 
 export interface Vehicle {
   id: string;
   owner: {
     id: string;
     name: string;
-    document: string;
+    document: string | null;
   };
-  license_plate: string;
+  license_plate: string | null;
+  year: number | null;
   brand: string;
+  mileage: string | null;
   model: string;
-  color: string;
-  chassis: string;
+  color: string | null;
+  chassis: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface VehicleCreateData {
   owner_id: string;
-  license_plate: string;
+  license_plate?: string | null;
+  year?: number | null;
   brand: string;
   model: string;
-  color: string;
-  chassis: string;
+  color?: string | null;
+  chassis?: string | null;
+  mileage?: string | null;
 }
 
-export async function getVehicles(): Promise<Vehicle[]> {
-  const response = await api.get<Vehicle[]>("/api/vehicles/");
+export type VehicleUpdateData = Partial<VehicleCreateData>;
+
+export async function getVehicles(search?: string, ownerId?: string): Promise<Vehicle[]> {
+  const response = await api.get<Paginated<Vehicle>>("/api/vehicles/", {
+    params: {
+      page_size: LIST_PAGE_SIZE,
+      ...(search ? { search } : {}),
+      ...(ownerId ? { owner: ownerId } : {}),
+    },
+  });
+  return response.data.results;
+}
+
+export async function getVehiclesPaginated(params?: {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  owner?: string;
+}): Promise<Paginated<Vehicle>> {
+  const response = await api.get<Paginated<Vehicle>>("/api/vehicles/", {
+    params: {
+      page: params?.page ?? 1,
+      page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
+      ...(params?.search ? { search: params.search } : {}),
+      ...(params?.owner ? { owner: params.owner } : {}),
+    },
+  });
   return response.data;
 }
 
@@ -35,7 +65,11 @@ export async function createVehicle(data: VehicleCreateData): Promise<Vehicle> {
   return response.data;
 }
 
-export async function updateVehicle(id: string, data: VehicleCreateData): Promise<Vehicle> {
+export async function updateVehicle(id: string, data: VehicleUpdateData): Promise<Vehicle> {
   const response = await api.patch<Vehicle>(`/api/vehicles/${id}/`, data);
   return response.data;
+}
+
+export async function deleteVehicle(id: string): Promise<void> {
+  await api.delete(`/api/vehicles/${id}/`);
 }
