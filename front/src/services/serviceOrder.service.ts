@@ -257,3 +257,14 @@ export async function uploadServiceOrderAttachment(
 export async function deleteServiceOrderAttachment(id: string, attachmentId: string): Promise<void> {
   await api.delete(`/api/service-orders/${id}/attachments/${attachmentId}/`);
 }
+
+export async function downloadServiceOrderAttachment(
+  id: string,
+  attachmentId: string,
+): Promise<Blob> {
+  const response = await api.get<Blob>(
+    `/api/service-orders/${id}/attachments/${attachmentId}/download/`,
+    { responseType: "blob" },
+  );
+  return response.data;
+}

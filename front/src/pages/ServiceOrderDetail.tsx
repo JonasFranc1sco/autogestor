@@ -28,6 +28,7 @@ import {
   getServiceOrderAttachments,
   uploadServiceOrderAttachment,
   deleteServiceOrderAttachment,
+  downloadServiceOrderAttachment,
   STATUS_LABELS,
   STATUS_TRANSITIONS,
   PAYMENT_METHOD_LABELS,
@@ -41,6 +42,7 @@ import { getUsers } from "@/services/user.service";
 import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
 import { formatCurrency, formatDateTime, parseDecimalValue, tryParseDecimal } from "@/lib/format";
+import { maskCpfCnpj } from "@/lib/masks";
 import { extractApiErrorMessage } from "@/lib/errors";
 import { statusClasses } from "@/pages/ServiceOrders";
 
@@ -331,6 +333,18 @@ export default function ServiceOrderDetailPage() {
     }
   }
 
+  async function handleOpenAttachment(attachment: ServiceOrderAttachment) {
+    if (!order) return;
+    try {
+      const blob = await downloadServiceOrderAttachment(order.id, attachment.id);
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (error) {
+      toast.error(extractApiErrorMessage(error, "Não foi possível abrir o anexo."));
+    }
+  }
+
   async function handleRefund(paymentId: string) {
     if (!order) return;
     try {
@@ -398,7 +412,7 @@ export default function ServiceOrderDetailPage() {
         <div className="rounded-2xl border border-border bg-surface p-5">
           <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Cliente</h2>
           <p className="font-medium">{order.client.name}</p>
-          <p className="text-sm text-muted-foreground">{order.client.document ?? "Sem documento"}</p>
+          <p className="text-sm text-muted-foreground">{order.client.document ? maskCpfCnpj(order.client.document) : "Sem documento"}</p>
         </div>
 
         <div className="rounded-2xl border border-border bg-surface p-5">
@@ -894,14 +908,13 @@ export default function ServiceOrderDetailPage() {
             {attachments.map((attachment) => (
               <li key={attachment.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2 text-sm">
                 <div className="min-w-0">
-                  <a
-                    href={attachment.file_url ?? attachment.file}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-primary hover:underline"
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenAttachment(attachment)}
+                    className="font-medium text-primary hover:underline text-left"
                   >
                     {attachment.description ?? "Anexo"}
-                  </a>
+                  </button>
                   <p className="text-xs text-muted-foreground">
                     {formatDateTime(attachment.created_at)}
                     {attachment.uploaded_by_name ? ` · ${attachment.uploaded_by_name}` : ""}

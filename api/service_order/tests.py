@@ -338,6 +338,118 @@ class ServiceOrderCreateTests(ServiceOrderBaseTestCase):
             ServiceOrder.objects.get(workshop=self.other_workshop).number, 1
         )
 
+    def test_inactive_related_records_rejected_on_create(self):
+        inactive_client = Client.objects.create(
+            workshop=self.workshop,
+            name="Cliente Inativo",
+            document="55544433322",
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(client_id=str(inactive_client.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("client_id", response.data)
+
+        inactive_vehicle = Vehicle.objects.create(
+            workshop=self.workshop,
+            owner=self.client_obj,
+            brand="Fiat",
+            model="Palio",
+            license_plate="ABC1D23",
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(vehicle_id=str(inactive_vehicle.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("vehicle_id", response.data)
+
+        inactive_mechanic = Employee.objects.create(
+            workshop=self.workshop,
+            name="Mecânico Inativo",
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[
+                    {
+                        "service_id": str(self.catalog_service.id),
+                        "mechanic_id": str(inactive_mechanic.id),
+                        "price": "80.00",
+                    }
+                ],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        inactive_service = Service.objects.create(
+            workshop=self.workshop,
+            name="Serviço Inativo",
+            sale_price=Decimal("50.00"),
+            cost_price=Decimal("20.00"),
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[{"service_id": str(inactive_service.id), "price": "50.00"}],
+                products=[],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        inactive_product = Product.objects.create(
+            workshop=self.workshop,
+            name="Peça Inativa",
+            cost_price=Decimal("10.00"),
+            sale_price=Decimal("20.00"),
+            stock_quantity=10,
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[{"product_id": str(inactive_product.id), "quantity": 1, "price": "20.00"}],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        inactive_seller = User.objects.create_user(
+            email="inativo@oficina.com",
+            password="senhaForte123",
+            full_name="Vendedor Inativo",
+            role=Role.ATTENDANT,
+            workshop=self.workshop,
+            is_active=False,
+        )
+        response = self.client.post(
+            OS_URL,
+            self.payload(
+                services=[],
+                products=[
+                    {
+                        "product_id": str(self.product.id),
+                        "seller_id": str(inactive_seller.id),
+                        "quantity": 1,
+                        "price": "40.00",
+                    }
+                ],
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
 
 class ServiceOrderUpdateTests(ServiceOrderBaseTestCase):
     def create_order(self):
@@ -904,6 +1016,11 @@ class ServiceOrderStockReleaseIdempotencyTests(ServiceOrderBaseTestCase):
 
 
 class ServiceOrderAttachmentAndWarrantyTests(ServiceOrderBaseTestCase):
+    VALID_JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+    VALID_PNG_BYTES = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+    VALID_WEBP_BYTES = b"RIFF\x1a\x00\x00\x00WEBPVP8 \x0e\x00\x00\x000\x01\x00\x9d\x01*\x01\x00\x01\x00\x00"
+    VALID_PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF"
+
     def create_order(self):
         response = self.client.post(OS_URL, self.payload(), format="json")
         return response.data["id"]
@@ -912,23 +1029,29 @@ class ServiceOrderAttachmentAndWarrantyTests(ServiceOrderBaseTestCase):
         order_id = self.create_order()
         from django.core.files.uploadedfile import SimpleUploadedFile
 
-        file = SimpleUploadedFile("foto.jpg", b"conteudo-fake", content_type="image/jpeg")
+        file = SimpleUploadedFile("foto.jpg", self.VALID_JPEG_BYTES, content_type="image/jpeg")
         response = self.client.post(
             f"{OS_URL}{order_id}/attachments/",
             {"file": file, "description": "Foto do para-choque"},
             format="multipart",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        attachment_id = response.data["id"]
+        expected_suffix = f"/api/service-orders/{order_id}/attachments/{attachment_id}/download/"
+        self.assertTrue(response.data["file_url"].endswith(expected_suffix))
+        self.assertTrue(response.data["file"].endswith(expected_suffix))
 
         response = self.client.get(f"{OS_URL}{order_id}/attachments/")
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]["description"], "Foto do para-choque")
 
+        self.client.delete(f"{OS_URL}{order_id}/attachments/{attachment_id}/")
+
     def test_delete_attachment(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         order_id = self.create_order()
-        file = SimpleUploadedFile("foto.jpg", b"conteudo-fake", content_type="image/jpeg")
+        file = SimpleUploadedFile("foto.jpg", self.VALID_JPEG_BYTES, content_type="image/jpeg")
         response = self.client.post(
             f"{OS_URL}{order_id}/attachments/",
             {"file": file, "description": "Laudo"},
@@ -943,6 +1066,136 @@ class ServiceOrderAttachmentAndWarrantyTests(ServiceOrderBaseTestCase):
 
         response = self.client.get(f"{OS_URL}{order_id}/attachments/")
         self.assertEqual(len(response.data), 0)
+
+    def test_rejects_arbitrary_content_renamed_as_jpg_or_pdf(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        fake_jpg = SimpleUploadedFile(
+            "malicioso.jpg",
+            b"<html><script>alert('xss')</script></html>",
+            content_type="image/jpeg",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": fake_jpg, "description": "Falso JPG"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        fake_pdf = SimpleUploadedFile(
+            "script.pdf",
+            b"#!/bin/sh\nrm -rf /",
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": fake_pdf, "description": "Falso PDF"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rejects_mismatched_extension_and_binary_signature(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        png_as_pdf = SimpleUploadedFile(
+            "arquivo.pdf",
+            self.VALID_PNG_BYTES,
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": png_as_pdf},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rejects_pdf_with_embedded_javascript(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        malicious_pdf = SimpleUploadedFile(
+            "laudo.pdf",
+            b"%PDF-1.4\n1 0 obj\n<< /Type /Action /S /JavaScript /JS (app.alert(1)) >>\nendobj\n%%EOF",
+            content_type="application/pdf",
+        )
+        response = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": malicious_pdf},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_accepts_valid_png_webp_and_pdf(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        order_id = self.create_order()
+        samples = [
+            ("imagem.png", self.VALID_PNG_BYTES, "image/png"),
+            ("imagem.webp", self.VALID_WEBP_BYTES, "image/webp"),
+            ("laudo.pdf", self.VALID_PDF_BYTES, "application/pdf"),
+        ]
+        for filename, content, mime in samples:
+            uploaded = SimpleUploadedFile(filename, content, content_type=mime)
+            response = self.client.post(
+                f"{OS_URL}{order_id}/attachments/",
+                {"file": uploaded},
+                format="multipart",
+            )
+            self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+            self.client.delete(f"{OS_URL}{order_id}/attachments/{response.data['id']}/")
+
+    def test_download_attachment_works_with_debug_false_and_enforces_tenant_and_auth(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from service_order.models import ServiceOrderAttachment
+
+        order_id = self.create_order()
+        file = SimpleUploadedFile("foto.jpg", self.VALID_JPEG_BYTES, content_type="image/jpeg")
+        upload_resp = self.client.post(
+            f"{OS_URL}{order_id}/attachments/",
+            {"file": file, "description": "Foto autenticada"},
+            format="multipart",
+        )
+        self.assertEqual(upload_resp.status_code, status.HTTP_201_CREATED, upload_resp.data)
+        attachment_id = upload_resp.data["id"]
+        download_url = f"{OS_URL}{order_id}/attachments/{attachment_id}/download/"
+        attachment_obj = ServiceOrderAttachment.objects.get(pk=attachment_id)
+
+        try:
+            with override_settings(DEBUG=False):
+                # 1. Usuário autenticado da mesma oficina consegue baixar com DEBUG=False
+                dl_resp = self.client.get(download_url)
+                self.assertEqual(dl_resp.status_code, status.HTTP_200_OK)
+                self.assertEqual(b"".join(dl_resp.streaming_content), self.VALID_JPEG_BYTES)
+                self.assertEqual(dl_resp["Content-Type"], "image/jpeg")
+                self.assertEqual(dl_resp["X-Content-Type-Options"], "nosniff")
+                self.assertIn("sandbox", dl_resp["Content-Security-Policy"])
+
+                # 2. Requisição sem autenticação recebe 401
+                self.client.force_authenticate(user=None)
+                unauth_resp = self.client.get(download_url)
+                self.assertEqual(unauth_resp.status_code, status.HTTP_401_UNAUTHORIZED)
+
+                # 3. Acesso direto via rota estática /media/service_orders/... é bloqueado (404)
+                direct_media_resp = self.client.get(f"/media/{attachment_obj.file.name}")
+                self.assertEqual(direct_media_resp.status_code, status.HTTP_404_NOT_FOUND)
+
+                # 4. Usuário autenticado de outra oficina recebe 404 (isolamento multi-tenant)
+                other_admin = User.objects.create_user(
+                    email="outro@oficina.com",
+                    password="senhaForte123",
+                    full_name="Outro Admin",
+                    role=Role.ADMIN,
+                    workshop=self.other_workshop,
+                )
+                self.client.force_authenticate(other_admin)
+                cross_tenant_resp = self.client.get(download_url)
+                self.assertEqual(cross_tenant_resp.status_code, status.HTTP_404_NOT_FOUND)
+        finally:
+            self.client.force_authenticate(self.admin)
+            self.client.delete(f"{OS_URL}{order_id}/attachments/{attachment_id}/")
 
     def test_warranty_days_visible(self):
         self.catalog_service.warranty_days = 180

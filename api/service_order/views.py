@@ -1,4 +1,6 @@
+import os
 from django.db import transaction
+from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
@@ -216,3 +218,42 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
         attachment.file.delete(save=False)
         attachment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path=r"attachments/(?P<attachment_id>[^/.]+)/download",
+        url_name="download-attachment",
+    )
+    def download_attachment(self, request, pk=None, attachment_id=None):
+        service_order = self.get_object()
+        try:
+            attachment = service_order.attachments.get(pk=attachment_id)
+        except ServiceOrderAttachment.DoesNotExist:
+            return Response(
+                {"detail": "Anexo não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not attachment.file or not attachment.file.storage.exists(attachment.file.name):
+            return Response(
+                {"detail": "Arquivo do anexo não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ext = os.path.splitext(attachment.file.name)[1].lower()
+        content_type = ServiceOrderAttachmentSerializer.EXTENSION_CONTENT_TYPES.get(
+            ext, "application/octet-stream"
+        )
+        filename = os.path.basename(attachment.file.name)
+
+        response = FileResponse(
+            attachment.file.open("rb"),
+            content_type=content_type,
+            as_attachment=False,
+            filename=filename,
+        )
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        response["Cache-Control"] = "private, no-store"
+        return response

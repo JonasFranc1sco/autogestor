@@ -1,5 +1,8 @@
+import os
+import re
 from decimal import Decimal
 from django.db import transaction
+from django.urls import reverse
 from rest_framework import serializers
 
 from .models import (
@@ -26,7 +29,7 @@ from products.models import StockMovement
 class ServiceOrderServiceSerializer(serializers.ModelSerializer):
     service = ServiceSerializer(read_only=True)
     service_id = TenantPrimaryKeyRelatedField(
-        queryset=Service.objects.all(), write_only=True, source="service", required=False, allow_null=True
+        queryset=Service.objects.filter(is_active=True), write_only=True, source="service", required=False, allow_null=True
     )
     service_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
     price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.00"), required=False)
@@ -34,7 +37,7 @@ class ServiceOrderServiceSerializer(serializers.ModelSerializer):
     total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     mechanic = EmployeeSerializer(read_only=True)
     mechanic_id = TenantPrimaryKeyRelatedField(
-        queryset=Employee.objects.all(), write_only=True, source="mechanic", required=False, allow_null=True
+        queryset=Employee.objects.filter(is_active=True), write_only=True, source="mechanic", required=False, allow_null=True
     )
 
     class Meta:
@@ -67,11 +70,11 @@ class ServiceOrderServiceSerializer(serializers.ModelSerializer):
 class ServiceOrderProductSerializer(serializers.ModelSerializer):
     product = ProductsSerializer(read_only=True)
     product_id = TenantPrimaryKeyRelatedField(
-        queryset=Product.objects.all(), write_only=True, source="product"
+        queryset=Product.objects.filter(is_active=True), write_only=True, source="product"
     )
     seller = UserListSerializer(read_only=True)
     seller_id = TenantPrimaryKeyRelatedField(
-        queryset=User.objects.all(), write_only=True, source="seller", required=False, allow_null=True
+        queryset=User.objects.filter(is_active=True), write_only=True, source="seller", required=False, allow_null=True
     )
     price = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.00"), required=False)
     discount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.00"), required=False, default=Decimal("0.00"))
@@ -124,7 +127,7 @@ class ServiceOrderPaymentSerializer(serializers.ModelSerializer):
         source="created_by.full_name", read_only=True, default=None
     )
     service_order = TenantPrimaryKeyRelatedField(
-        queryset=ServiceOrder.objects.all(), required=False
+        queryset=ServiceOrder.objects.filter(is_active=True), required=False
     )
 
     class Meta:
@@ -148,10 +151,10 @@ class ServiceOrderSerializer(serializers.ModelSerializer):
     vehicle = VehicleSerializer(read_only=True)
 
     client_id = TenantPrimaryKeyRelatedField(
-        queryset=Client.objects.all(), write_only=True, source="client"
+        queryset=Client.objects.filter(is_active=True), write_only=True, source="client"
     )
     vehicle_id = TenantPrimaryKeyRelatedField(
-        queryset=Vehicle.objects.all(), write_only=True, source="vehicle"
+        queryset=Vehicle.objects.filter(is_active=True), write_only=True, source="vehicle"
     )
 
     services = ServiceOrderServiceSerializer(many=True, required=False)
@@ -383,6 +386,24 @@ class ServiceOrderAttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
 
     ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+    EXTENSION_CONTENT_TYPES = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".pdf": "application/pdf",
+    }
+    ALLOWED_MIME_TYPES_BY_EXT = {
+        ".jpg": {"image/jpeg", "image/pjpeg", "application/octet-stream"},
+        ".jpeg": {"image/jpeg", "image/pjpeg", "application/octet-stream"},
+        ".png": {"image/png", "application/octet-stream"},
+        ".webp": {"image/webp", "application/octet-stream"},
+        ".pdf": {"image/pdf", "application/pdf", "application/octet-stream"},
+    }
+    PDF_DANGEROUS_PATTERN = re.compile(
+        rb"/(?:JS|JavaScript|Launch|SubmitForm|ImportData|RichMedia)\b",
+        re.IGNORECASE,
+    )
     MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
     class Meta:
@@ -393,22 +414,74 @@ class ServiceOrderAttachmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "uploaded_by_name", "created_at"]
 
-    def validate_file(self, value):
-        import os
+    @staticmethod
+    def _detect_extensions_by_signature(header: bytes) -> set[str] | None:
+        if header.startswith(b"\xff\xd8\xff"):
+            return {".jpg", ".jpeg"}
+        if header.startswith(b"\x89PNG\r\n\x1a\n"):
+            return {".png"}
+        if len(header) >= 12 and header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+            return {".webp"}
+        if header.startswith(b"%PDF-"):
+            return {".pdf"}
+        return None
 
-        ext = os.path.splitext(value.name)[1].lower()
+    def validate_file(self, value):
+        ext = os.path.splitext(value.name or "")[1].lower()
         if ext not in self.ALLOWED_EXTENSIONS:
             raise serializers.ValidationError(
                 "Formato não permitido. Envie JPG, PNG, WEBP ou PDF."
+            )
+        if value.size <= 0:
+            raise serializers.ValidationError(
+                "O arquivo enviado está vazio."
             )
         if value.size > self.MAX_FILE_SIZE:
             raise serializers.ValidationError(
                 "O arquivo deve ter no máximo 10 MB."
             )
+
+        content_type = (getattr(value, "content_type", None) or "").split(";")[0].strip().lower()
+        if content_type and content_type not in self.ALLOWED_MIME_TYPES_BY_EXT[ext]:
+            raise serializers.ValidationError(
+                "O tipo MIME do arquivo não corresponde à extensão informada."
+            )
+
+        try:
+            value.seek(0)
+            header = value.read(32)
+            detected_extensions = self._detect_extensions_by_signature(header)
+            if detected_extensions is None or ext not in detected_extensions:
+                raise serializers.ValidationError(
+                    "O conteúdo binário do arquivo é inválido ou não corresponde à extensão informada."
+                )
+
+            if ext == ".pdf":
+                value.seek(0)
+                pdf_bytes = value.read()
+                if self.PDF_DANGEROUS_PATTERN.search(pdf_bytes):
+                    raise serializers.ValidationError(
+                        "Arquivos PDF com scripts ou ações executáveis embutidas não são permitidos."
+                    )
+        finally:
+            value.seek(0)
+
         return value
 
     def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        path = reverse(
+            "service-order-download-attachment",
+            kwargs={"pk": obj.service_order_id, "attachment_id": obj.pk},
+        )
         request = self.context.get("request")
-        if obj.file and request is not None:
-            return request.build_absolute_uri(obj.file.url)
-        return obj.file.url if obj.file else None
+        if request is not None:
+            return request.build_absolute_uri(path)
+        return path
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get("file_url"):
+            data["file"] = data["file_url"]
+        return data
