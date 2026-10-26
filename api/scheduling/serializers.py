@@ -16,13 +16,13 @@ class AppointmentSerializer(serializers.ModelSerializer):
     mechanic = EmployeeSerializer(read_only=True)
 
     client_id = TenantPrimaryKeyRelatedField(
-        queryset=Client.objects.all(), write_only=True, source="client"
+        queryset=Client.objects.filter(is_active=True), write_only=True, source="client"
     )
     vehicle_id = TenantPrimaryKeyRelatedField(
-        queryset=Vehicle.objects.all(), write_only=True, source="vehicle"
+        queryset=Vehicle.objects.filter(is_active=True), write_only=True, source="vehicle"
     )
     mechanic_id = TenantPrimaryKeyRelatedField(
-        queryset=Employee.objects.all(), write_only=True, source="mechanic",
+        queryset=Employee.objects.filter(is_active=True), write_only=True, source="mechanic",
         required=False, allow_null=True,
     )
 

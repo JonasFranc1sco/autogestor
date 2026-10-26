@@ -268,3 +268,20 @@ class StockMovementApiTests(APITestCase):
         reasons = response.data["results"]
         self.assertEqual(len(reasons), 1)
         self.assertEqual(reasons[0]["product_name"], "Filtro de Óleo")
+
+    def test_inactive_product_rejected_in_movement(self):
+        self.product.is_active = False
+        self.product.save(update_fields=["is_active"])
+
+        response = self.client.post(
+            "/api/stock-movements/",
+            {
+                "product": str(self.product.id),
+                "movement_type": "IN",
+                "quantity": 5,
+                "reason": "Compra para produto inativo",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("product", response.data)

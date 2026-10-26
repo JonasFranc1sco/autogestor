@@ -12,7 +12,7 @@ LICENSE_PLATE_REGEX = re.compile(r"^(?:[A-Z]{3}\d{4}|[A-Z]{3}\d[A-Z]\d{2})$")
 class VehicleSerializer(serializers.ModelSerializer):
     owner = ClientSerializer(read_only=True)
     owner_id = TenantPrimaryKeyRelatedField(
-        queryset=Client.objects.all(), write_only=True, source='owner'
+        queryset=Client.objects.filter(is_active=True), write_only=True, source='owner'
     )
     license_plate = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, max_length=8

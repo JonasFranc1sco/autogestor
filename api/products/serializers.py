@@ -94,9 +94,9 @@ class ProductsSerializer(serializers.ModelSerializer):
 class StockMovementSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     created_by_name = serializers.CharField(source="created_by.full_name", read_only=True, default=None)
-    product = TenantPrimaryKeyRelatedField(queryset=Product.objects.all())
+    product = TenantPrimaryKeyRelatedField(queryset=Product.objects.filter(is_active=True))
     service_order = TenantPrimaryKeyRelatedField(
-        queryset=ServiceOrder.objects.all(), required=False, allow_null=True
+        queryset=ServiceOrder.objects.filter(is_active=True), required=False, allow_null=True
     )
 
     class Meta:

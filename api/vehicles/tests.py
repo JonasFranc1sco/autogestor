@@ -108,3 +108,11 @@ class VehicleApiTests(APITestCase):
         plates = {item["license_plate"] for item in response.data["results"]}
         self.assertIn("BRA2E19", plates)
         self.assertNotIn("XYZ9Z99", plates)
+
+    def test_inactive_owner_rejected(self):
+        self.client_owner.is_active = False
+        self.client_owner.save(update_fields=["is_active"])
+
+        response = self.client.post(VEHICLES_URL, self.payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("owner_id", response.data)

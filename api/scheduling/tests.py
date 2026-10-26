@@ -109,3 +109,49 @@ class AppointmentApiTests(APITestCase):
             APPOINTMENTS_URL, {"date_from": yesterday, "date_to": yesterday}
         )
         self.assertEqual(response.data["count"], 0)
+
+    def test_inactive_client_vehicle_or_mechanic_rejected(self):
+        from employees.models import Employee
+
+        inactive_client = Client.objects.create(
+            workshop=self.workshop,
+            name="Cliente Inativo",
+            document="55566677788",
+            is_active=False,
+        )
+        response = self.client.post(
+            APPOINTMENTS_URL,
+            self.payload(client_id=str(inactive_client.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("client_id", response.data)
+
+        inactive_vehicle = Vehicle.objects.create(
+            workshop=self.workshop,
+            owner=self.client_obj,
+            brand="VW",
+            model="Polo",
+            license_plate="ABC1D23",
+            is_active=False,
+        )
+        response = self.client.post(
+            APPOINTMENTS_URL,
+            self.payload(vehicle_id=str(inactive_vehicle.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("vehicle_id", response.data)
+
+        inactive_mechanic = Employee.objects.create(
+            workshop=self.workshop,
+            name="Mecânico Inativo",
+            is_active=False,
+        )
+        response = self.client.post(
+            APPOINTMENTS_URL,
+            self.payload(mechanic_id=str(inactive_mechanic.id)),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("mechanic_id", response.data)

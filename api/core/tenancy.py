@@ -31,10 +31,16 @@ def scope_queryset(user, queryset):
 
 
 class TenantPrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
-    """PrimaryKeyRelatedField cujo queryset respeita a oficina do usuário."""
+    """PrimaryKeyRelatedField cujo queryset respeita a oficina do usuário e registros ativos."""
+
+    def __init__(self, **kwargs):
+        self.active_only = kwargs.pop("active_only", True)
+        super().__init__(**kwargs)
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        if self.active_only and hasattr(queryset.model, "is_active"):
+            queryset = queryset.filter(is_active=True)
         request = self.context.get("request") if hasattr(self, "context") else None
         if request is None or not request.user.is_authenticated:
             return queryset.all()

@@ -11,7 +11,7 @@ HIDDEN_COST_FIELDS = ("cost_price", "margin_percentage")
 class ServiceSerializer(serializers.ModelSerializer):
     employee = EmployeeSerializer(read_only=True)
     employee_id = TenantPrimaryKeyRelatedField(
-        queryset=Employee.objects.all(), write_only=True, source="employee", required=False, allow_null=True
+        queryset=Employee.objects.filter(is_active=True), write_only=True, source="employee", required=False, allow_null=True
     )
 
     class Meta:
