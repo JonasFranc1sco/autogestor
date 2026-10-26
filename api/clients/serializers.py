@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Client
 from core.serializers import NestedAddressModelSerializer
-from core.validators import is_valid_cpf_cnpj
+from core.validators import is_valid_cpf_cnpj, normalize_digits
 
 
 class ClientSerializer(NestedAddressModelSerializer):
@@ -12,14 +12,18 @@ class ClientSerializer(NestedAddressModelSerializer):
 
     def validate_document(self, value):
         if not value:
-            return value
+            return None
 
-        if not is_valid_cpf_cnpj(value):
+        digits = normalize_digits(value)
+        if not digits:
+            return None
+
+        if not is_valid_cpf_cnpj(digits):
             raise serializers.ValidationError(
                 "Informe um CPF ou CNPJ válido (dígitos verificadores inválidos)."
             )
 
-        queryset = Client.objects.filter(document=value, is_active=True)
+        queryset = Client.objects.filter(document=digits, is_active=True)
         request = self.context.get("request")
         workshop = None
         if request is not None and request.user.is_authenticated:
@@ -34,4 +38,4 @@ class ClientSerializer(NestedAddressModelSerializer):
             raise serializers.ValidationError(
                 "Já existe um cliente ativo com este documento."
             )
-        return value
+        return digits

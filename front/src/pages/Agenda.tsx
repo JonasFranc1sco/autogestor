@@ -24,6 +24,7 @@ import { SearchableSelect, type SearchableOption } from "@/components/ui/searcha
 import { ClientFormDialog } from "@/components/dialogs/client-form-dialog";
 import { VehicleFormDialog } from "@/components/dialogs/vehicle-form-dialog";
 import { formatDateTime } from "@/lib/format";
+import { maskCpfCnpj } from "@/lib/masks";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 const statusClasses: Record<AppointmentStatus, string> = {
@@ -139,7 +140,7 @@ export default function AgendaPage() {
     return list.map((client) => ({
       id: client.id,
       primary: client.name,
-      secondary: client.document ?? client.phone ?? undefined,
+      secondary: client.document ? maskCpfCnpj(client.document) : client.phone ?? undefined,
     }));
   }, []);
 

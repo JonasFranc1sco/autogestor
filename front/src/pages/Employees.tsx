@@ -15,7 +15,7 @@ import {
   type Employee,
 } from "@/services/employee.service";
 import { isInvalidPageError } from "@/services/pagination";
-import { maskCpfCnpj, maskPhone, isValidCpfCnpj, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
+import { maskCpf, maskCpfCnpj, maskPhone, isValidCpf, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 interface FormValues {
@@ -110,7 +110,7 @@ export default function EmployeesPage() {
       name: employee.name,
       email: employee.email ?? "",
       phone: toLocalPhoneDigits(employee.phone ?? ""),
-      document_cpf: employee.document_cpf ?? "",
+      document_cpf: unmask(employee.document_cpf ?? ""),
       document_rg: employee.document_rg ?? "",
       address: employee.address
         ? {
@@ -131,7 +131,7 @@ export default function EmployeesPage() {
   function validate(): boolean {
     const errors: Record<string, string> = {};
     if (!form.name.trim()) errors.name = "Informe o nome.";
-    if (form.document_cpf && !isValidCpfCnpj(form.document_cpf)) errors.document_cpf = "Informe um CPF válido.";
+    if (form.document_cpf && !isValidCpf(form.document_cpf)) errors.document_cpf = "Informe um CPF válido.";
     if (form.phone && !isValidPhone(form.phone)) errors.phone = "Informe o telefone com DDD.";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Informe um e-mail válido.";
 
@@ -290,8 +290,9 @@ export default function EmployeesPage() {
           <FormField
             label="CPF"
             optional
-            value={maskCpfCnpj(form.document_cpf)}
-            onChange={(e) => setForm({ ...form, document_cpf: e.target.value })}
+            inputMode="numeric"
+            value={maskCpf(form.document_cpf)}
+            onChange={(e) => setForm({ ...form, document_cpf: unmask(e.target.value).slice(0, 11) })}
             placeholder="000.000.000-00"
             error={fieldErrors.document_cpf}
           />

@@ -42,5 +42,12 @@ class Client(BaseModel):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        from core.validators import normalize_digits
+
+        if self.document is not None:
+            self.document = normalize_digits(self.document) or None
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f'{self.name} ({self.document})' if self.document else self.name

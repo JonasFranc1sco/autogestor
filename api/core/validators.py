@@ -8,6 +8,11 @@ def _digits(value: str) -> str:
     return ONLY_DIGITS.sub("", value or "")
 
 
+def normalize_digits(value: str | None) -> str:
+    """Remove qualquer pontuação/caractere não numérico de CPF/CNPJ."""
+    return ONLY_DIGITS.sub("", value or "")
+
+
 def _check_digit(base: str, factor: int) -> str:
     total = sum(int(char) * (factor - index) for index, char in enumerate(base))
     rest = (total * 10) % 11

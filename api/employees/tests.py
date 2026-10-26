@@ -90,3 +90,19 @@ class EmployeeApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_masked_cpf_normalized_and_duplicate_rejected(self):
+        response = self.client.post(
+            EMPLOYEES_URL,
+            self.payload(document_cpf="529.982.247-25"),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["document_cpf"], "52998224725")
+
+        duplicate = self.client.post(
+            EMPLOYEES_URL,
+            self.payload(name="Outro", document_cpf="52998224725", document_rg="9999999"),
+            format="json",
+        )
+        self.assertEqual(duplicate.status_code, status.HTTP_400_BAD_REQUEST)

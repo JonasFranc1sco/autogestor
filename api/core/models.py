@@ -69,5 +69,12 @@ class Workshop(BaseModel):
         related_name='workshop',
     )
 
+    def save(self, *args, **kwargs):
+        from core.validators import normalize_digits
+
+        if self.cnpj is not None:
+            self.cnpj = normalize_digits(self.cnpj) or None
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name

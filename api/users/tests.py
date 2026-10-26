@@ -34,7 +34,7 @@ class BaseAuthTestCase(APITestCase):
 class RegisterTests(APITestCase):
     def test_register_creates_workshop_and_admin(self):
         payload = {
-            "workshop": {"name": "Oficina Nova", "cnpj": "12.345.678/0001-90"},
+            "workshop": {"name": "Oficina Nova", "cnpj": "11.222.333/0001-81"},
             "full_name": "Maria Dona",
             "email": "maria@oficinanova.com",
             "password": "senhaForte123",
@@ -50,7 +50,7 @@ class RegisterTests(APITestCase):
         self.assertEqual(user.workshop.name, "Oficina Nova")
 
         workshop = Workshop.objects.get(name="Oficina Nova")
-        self.assertEqual(workshop.cnpj, "12.345.678/0001-90")
+        self.assertEqual(workshop.cnpj, "11222333000181")
 
         self.assertIn("refresh_token", response.cookies)
         self.assertTrue(response.cookies["refresh_token"]["httponly"])
@@ -263,9 +263,9 @@ class UserManagementTests(BaseAuthTestCase):
         self.assertEqual(response.data["count"], 0)
 
     def test_register_rejects_duplicated_cnpj(self):
-        Workshop.objects.create(name="Oficina Existente", cnpj="11.222.333/0001-44")
+        Workshop.objects.create(name="Oficina Existente", cnpj="11.222.333/0001-81")
         payload = {
-            "workshop": {"name": "Outra Oficina", "cnpj": "11.222.333/0001-44"},
+            "workshop": {"name": "Outra Oficina", "cnpj": "11222333000181"},
             "full_name": "Novo",
             "email": "novo@teste.com",
             "password": "senhaForte123",
@@ -273,6 +273,35 @@ class UserManagementTests(BaseAuthTestCase):
 
         response = self.client.post("/api/auth/register/", payload, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_register_rejects_invalid_cnpj_and_allows_empty_string_cnpj(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        invalid_payload = {
+            "workshop": {"name": "Oficina CNPJ Inválido", "cnpj": "11.222.333/0001-00"},
+            "full_name": "Novo",
+            "email": "invalido@teste.com",
+            "password": "senhaForte123",
+        }
+        response = self.client.post("/api/auth/register/", invalid_payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Duas oficinas enviando cnpj="" devem ter cnpj normalizado para None sem colisão
+        for idx in (1, 2):
+            resp = self.client.post(
+                "/api/auth/register/",
+                {
+                    "workshop": {"name": f"Oficina Sem CNPJ {idx}", "cnpj": ""},
+                    "full_name": f"Dono {idx}",
+                    "email": f"dono{idx}@semcnpj.com",
+                    "password": "senhaForte123",
+                },
+                format="json",
+            )
+            self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.data)
+            ws = Workshop.objects.get(name=f"Oficina Sem CNPJ {idx}")
+            self.assertIsNone(ws.cnpj)
 
     def test_workshop_endpoint(self):
         self.client.force_authenticate(self.admin)

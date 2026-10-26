@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import Employee
 from core.serializers import NestedAddressModelSerializer
-from core.validators import is_valid_cpf
+from core.validators import is_valid_cpf, normalize_digits
 
 
 class EmployeeSerializer(NestedAddressModelSerializer):
@@ -12,7 +12,7 @@ class EmployeeSerializer(NestedAddressModelSerializer):
 
     def _validate_unique(self, value, field, label):
         if not value:
-            return value
+            return None
 
         queryset = Employee.objects.filter(**{field: value, "is_active": True})
         request = self.context.get("request")
@@ -32,11 +32,16 @@ class EmployeeSerializer(NestedAddressModelSerializer):
         return value
 
     def validate_document_cpf(self, value):
-        if value and not is_valid_cpf(value):
+        if not value:
+            return None
+        digits = normalize_digits(value)
+        if not digits:
+            return None
+        if not is_valid_cpf(digits):
             raise serializers.ValidationError(
                 "Informe um CPF válido (dígitos verificadores inválidos)."
             )
-        return self._validate_unique(value, "document_cpf", "CPF")
+        return self._validate_unique(digits, "document_cpf", "CPF")
 
     def validate_document_rg(self, value):
         return self._validate_unique(value, "document_rg", "RG")

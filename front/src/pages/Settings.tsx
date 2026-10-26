@@ -11,7 +11,7 @@ import {
   deleteWorkshopLogo,
 } from "@/services/workshop.service";
 import { useAuth } from "@/contexts/AuthContext";
-import { maskCpfCnpj, maskPhone, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
+import { maskCnpj, maskPhone, isValidCnpj, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
 import { extractApiErrorMessage } from "@/lib/errors";
 
 export default function SettingsPage() {
@@ -32,7 +32,7 @@ export default function SettingsPage() {
     getWorkshop()
       .then((workshop) => {
         setName(workshop.name);
-        setCnpj(workshop.cnpj ?? "");
+        setCnpj(unmask(workshop.cnpj ?? ""));
         setPhone(toLocalPhoneDigits(workshop.phone ?? ""));
         setEmail(workshop.email ?? "");
         setLogoUrl(workshop.logo_url ?? null);
@@ -87,6 +87,7 @@ export default function SettingsPage() {
   async function handleSave() {
     const nextErrors: Record<string, string> = {};
     if (!name.trim()) nextErrors.name = "Informe o nome da oficina.";
+    if (cnpj && !isValidCnpj(cnpj)) nextErrors.cnpj = "Informe um CNPJ válido.";
     if (phone && !isValidPhone(phone)) nextErrors.phone = "Informe o telefone com DDD.";
     const hasAnyAddress = Object.values(address).some((value) => value.trim() !== "");
     if (hasAnyAddress) {
@@ -196,8 +197,9 @@ export default function SettingsPage() {
           <FormField
             label="CNPJ"
             optional
-            value={maskCpfCnpj(cnpj)}
-            onChange={(e) => setCnpj(e.target.value)}
+            inputMode="numeric"
+            value={maskCnpj(cnpj)}
+            onChange={(e) => setCnpj(unmask(e.target.value).slice(0, 14))}
             placeholder="00.000.000/0000-00"
             error={errors.cnpj}
           />

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Address, Workshop
+from .validators import is_valid_cnpj, normalize_digits
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -68,9 +69,18 @@ class WorkshopSerializer(NestedAddressModelSerializer):
 
     def validate_cnpj(self, value):
         if not value:
-            return value
+            return None
 
-        queryset = Workshop.objects.filter(cnpj=value)
+        digits = normalize_digits(value)
+        if not digits:
+            return None
+
+        if not is_valid_cnpj(digits):
+            raise serializers.ValidationError(
+                "Informe um CNPJ válido (dígitos verificadores inválidos)."
+            )
+
+        queryset = Workshop.objects.filter(cnpj=digits)
         if self.instance is not None:
             queryset = queryset.exclude(pk=self.instance.pk)
 
@@ -78,7 +88,7 @@ class WorkshopSerializer(NestedAddressModelSerializer):
             raise serializers.ValidationError(
                 "Já existe uma oficina com este CNPJ."
             )
-        return value
+        return digits
 
 
 class WorkshopLogoSerializer(serializers.Serializer):

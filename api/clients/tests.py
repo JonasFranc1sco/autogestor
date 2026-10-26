@@ -196,6 +196,14 @@ class ClientDocumentValidationTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["document"], "52998224725")
+
+        duplicate = self.client.post(
+            CLIENTS_URL,
+            {"name": "CPF Duplicado Sem Máscara", "document": "52998224725"},
+            format="json",
+        )
+        self.assertEqual(duplicate.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_invalid_cnpj_rejected(self):
         response = self.client.post(
@@ -212,3 +220,4 @@ class ClientDocumentValidationTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["document"], "11222333000181")

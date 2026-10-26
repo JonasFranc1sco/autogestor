@@ -26,6 +26,7 @@ import { getServices, type Service } from "@/services/service.service";
 import { getProducts, type Product } from "@/services/product.service";
 import { isInvalidPageError } from "@/services/pagination";
 import { formatCurrency, formatDate, parseDecimalValue } from "@/lib/format";
+import { maskCpfCnpj } from "@/lib/masks";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 export const statusClasses: Record<ServiceOrderStatus, string> = {
@@ -211,7 +212,7 @@ export default function ServiceOrdersPage() {
     return list.map((client) => ({
       id: client.id,
       primary: client.name,
-      secondary: client.document ?? client.phone ?? undefined,
+      secondary: client.document ? maskCpfCnpj(client.document) : client.phone ?? undefined,
     }));
   }, []);
 

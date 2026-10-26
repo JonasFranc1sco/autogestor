@@ -5,7 +5,7 @@ import { FormField } from "@/components/ui/form";
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
 import { createVehicle, updateVehicle, type Vehicle } from "@/services/vehicle.service";
 import { getClients, type Client } from "@/services/client.service";
-import { maskPlate, isValidPlate } from "@/lib/masks";
+import { maskCpfCnpj, maskPlate, isValidPlate } from "@/lib/masks";
 import { tryParseDecimal, tryParseDecimalNumber } from "@/lib/format";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
@@ -102,7 +102,7 @@ export function VehicleFormDialog({
     return clients.map((client) => ({
       id: client.id,
       primary: client.name,
-      secondary: client.document ?? client.phone ?? undefined,
+      secondary: client.document ? maskCpfCnpj(client.document) : client.phone ?? undefined,
     }));
   }, []);
 

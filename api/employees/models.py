@@ -42,5 +42,12 @@ class Employee(BaseModel):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        from core.validators import normalize_digits
+
+        if self.document_cpf is not None:
+            self.document_cpf = normalize_digits(self.document_cpf) or None
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f'{self.name} ({self.document_cpf})' if self.document_cpf else self.name

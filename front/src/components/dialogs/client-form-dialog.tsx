@@ -4,7 +4,7 @@ import { Dialog } from "@/components/layout/Dialog";
 import { AddressForm, emptyAddress, validateAddress, type AddressFormValues } from "@/components/layout/AddressForm";
 import { FormField, FormSelect } from "@/components/ui/form";
 import { createClient, updateClient, type Client } from "@/services/client.service";
-import { maskCpfCnpj, maskPhone, isValidCpfCnpj, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
+import { maskCpf, maskCnpj, maskPhone, isValidCpf, isValidCnpj, isValidPhone, phoneToE164, toLocalPhoneDigits, unmask } from "@/lib/masks";
 import { extractApiErrorMessage, extractFieldErrors } from "@/lib/errors";
 
 interface FormValues {
@@ -53,7 +53,7 @@ export function ClientFormDialog({ open, onClose, editing, defaultValues, onSave
         name: editing.name,
         email: editing.email ?? "",
         phone: toLocalPhoneDigits(editing.phone ?? ""),
-        document: editing.document ?? "",
+        document: unmask(editing.document ?? ""),
         responsible: editing.responsible ?? "",
         address: editing.address
           ? {
@@ -76,7 +76,13 @@ export function ClientFormDialog({ open, onClose, editing, defaultValues, onSave
   function validate(): boolean {
     const errors: Record<string, string> = {};
     if (!form.name.trim()) errors.name = "Informe o nome.";
-    if (form.document && !isValidCpfCnpj(form.document)) errors.document = "Informe um CPF ou CNPJ válido.";
+    if (form.document) {
+      if (form.person_type === "PJ" && !isValidCnpj(form.document)) {
+        errors.document = "Informe um CNPJ válido.";
+      } else if (form.person_type === "PF" && !isValidCpf(form.document)) {
+        errors.document = "Informe um CPF válido.";
+      }
+    }
     if (form.phone && !isValidPhone(form.phone)) errors.phone = "Informe o telefone com DDD.";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Informe um e-mail válido.";
 
@@ -138,7 +144,14 @@ export function ClientFormDialog({ open, onClose, editing, defaultValues, onSave
         <FormSelect
           label="Tipo"
           value={form.person_type}
-          onChange={(e) => setForm({ ...form, person_type: e.target.value as "PF" | "PJ" })}
+          onChange={(e) => {
+            const nextType = e.target.value as "PF" | "PJ";
+            setForm({
+              ...form,
+              person_type: nextType,
+              document: unmask(form.document).slice(0, nextType === "PJ" ? 14 : 11),
+            });
+          }}
         >
           <option value="PF">Pessoa Física (CPF)</option>
           <option value="PJ">Pessoa Jurídica (CNPJ)</option>
@@ -155,9 +168,15 @@ export function ClientFormDialog({ open, onClose, editing, defaultValues, onSave
         <FormField
           label="CPF / CNPJ"
           optional
-          value={maskCpfCnpj(form.document)}
-          onChange={(e) => setForm({ ...form, document: e.target.value })}
-          placeholder="000.000.000-00"
+          inputMode="numeric"
+          value={form.person_type === "PJ" ? maskCnpj(form.document) : maskCpf(form.document)}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              document: unmask(e.target.value).slice(0, form.person_type === "PJ" ? 14 : 11),
+            })
+          }
+          placeholder={form.person_type === "PJ" ? "00.000.000/0000-00" : "000.000.000-00"}
           error={fieldErrors.document}
         />
 
