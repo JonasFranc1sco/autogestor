@@ -18,7 +18,7 @@ import {
   type ServiceOrder,
   type ServiceOrderStatus,
 } from "@/services/serviceOrder.service";
-import { getClients } from "@/services/client.service";
+import { getClients, type Client } from "@/services/client.service";
 import { getVehicles, type Vehicle } from "@/services/vehicle.service";
 import { getEmployees } from "@/services/employee.service";
 import { getUsers } from "@/services/user.service";
@@ -72,6 +72,12 @@ export default function ServiceOrdersPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
+  const [debouncedBrandFilter, setDebouncedBrandFilter] = useState("");
+  const [modelFilter, setModelFilter] = useState("");
+  const [debouncedModelFilter, setDebouncedModelFilter] = useState("");
+  const [mechanicFilter, setMechanicFilter] = useState("");
+  const [mechanicFilterLabel, setMechanicFilterLabel] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -84,8 +90,10 @@ export default function ServiceOrdersPage() {
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [productDialogRowKey, setProductDialogRowKey] = useState<number | null>(null);
   const [newVehicle, setNewVehicle] = useState<Vehicle | null>(null);
+  const [newClient, setNewClient] = useState<Client | null>(null);
   const productCache = useRef(new Map<string, Product>());
   const serviceCache = useRef(new Map<string, Service>());
+  const vehicleCache = useRef(new Map<string, Vehicle>());
   const [description, setDescription] = useState("");
   const [observations, setObservations] = useState("");
   const [serviceRows, setServiceRows] = useState<ServiceItemRow[]>([]);
@@ -94,11 +102,17 @@ export default function ServiceOrdersPage() {
 
   const requestIdRef = useRef(0);
 
-  const load = useCallback(async (targetPage: number, query?: string, status?: string) => {
+  const load = useCallback(async (targetPage: number, filters?: {query?: string; status?: string; brand?:string; model?:string; mechanic?:string;},) => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
-      const data = await getServiceOrdersPaginated({ page: targetPage, search: query, status });
+      const data = await getServiceOrdersPaginated({
+        page: targetPage, search: filters?.query,
+        status: filters?.status,
+        vehicle_brand: filters?.brand,
+        vehicle_model: filters?.model,
+        mechanic: filters?.mechanic,
+      });
       if (requestId !== requestIdRef.current) return;
       setOrders(data.results);
       setTotalCount(data.count);
@@ -126,8 +140,33 @@ export default function ServiceOrdersPage() {
   }, [search, debouncedSearch]);
 
   useEffect(() => {
-    void load(page, debouncedSearch, statusFilter);
-  }, [page, debouncedSearch, statusFilter, load]);
+    if (brandFilter === debouncedBrandFilter) return;
+    const timer = setTimeout(() => {
+      setDebouncedBrandFilter(brandFilter);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [brandFilter, debouncedBrandFilter]);
+
+  useEffect(() => {
+    if (modelFilter === debouncedModelFilter) return;
+    const timer = setTimeout(() => {
+      setDebouncedModelFilter(modelFilter);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [modelFilter, debouncedModelFilter]);
+
+
+  useEffect(() => {
+    void load(page, {
+      query: debouncedSearch, 
+      status: statusFilter,
+      brand: debouncedBrandFilter,
+      model: debouncedModelFilter,
+      mechanic: mechanicFilter,
+    });
+  }, [page, debouncedSearch, statusFilter, debouncedBrandFilter, debouncedModelFilter, mechanicFilter, load]);
 
   useEffect(() => {
     if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
@@ -152,6 +191,7 @@ export default function ServiceOrdersPage() {
     setVehicleId("");
     setVehicleLabel("");
     setNewVehicle(null);
+    setNewClient(null);
     setDescription("");
     setObservations("");
     setServiceRows([]);
@@ -207,6 +247,38 @@ export default function ServiceOrdersPage() {
     );
   }
 
+  function handleVehicleSelect(id: string | null, option: SearchableOption | null) {
+    if (!id) {
+      setVehicleId("");
+      setVehicleLabel("");
+      return;
+    }
+
+    const vehicle = vehicleCache.current.get(id);
+    const label =
+      option?.primary ??
+      (vehicle
+        ? `${vehicle.license_plate ?? "Sem placa"} — ${vehicle.brand} ${vehicle.model}`
+        : "");
+
+    setVehicleId(id);
+    setVehicleLabel(label);
+
+    if (vehicle?.owner) {
+      setClientId(vehicle.owner.id);
+      setClientLabel(vehicle.owner.name);
+    }
+
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next.client;
+      delete next.client_id;
+      delete next.vehicle;
+      delete next.vehicle_id;
+      return next;
+    });
+  }
+
   const searchClients = useCallback(async (term: string): Promise<SearchableOption[]> => {
     const list = await getClients(term || undefined);
     return list.map((client) => ({
@@ -218,12 +290,32 @@ export default function ServiceOrdersPage() {
 
   const searchVehicles = useCallback(
     async (term: string): Promise<SearchableOption[]> => {
-      if (!clientId) return [];
-      const list = await getVehicles(term || undefined, clientId);
+      const list = await getVehicles(term || undefined, clientId || undefined);
+      for (const vehicle of list) {
+        vehicleCache.current.set(vehicle.id, vehicle);
+      }
+
+      const cleanTerm = term.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (cleanTerm.length === 7) {
+        const exactMatch = list.find(
+          (v) => (v.license_plate ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "") === cleanTerm,
+        );
+        if (exactMatch) {
+          setVehicleId(exactMatch.id);
+          setVehicleLabel(
+            `${exactMatch.license_plate ?? "Sem placa"} — ${exactMatch.brand} ${exactMatch.model}`,
+          );
+          setClientId(exactMatch.owner.id);
+          setClientLabel(exactMatch.owner.name);
+        }
+      }
+
       return list.map((vehicle) => ({
         id: vehicle.id,
         primary: `${vehicle.license_plate ?? "Sem placa"} — ${vehicle.brand} ${vehicle.model}`,
-        secondary: vehicle.owner.name,
+        secondary: vehicle.owner.document
+          ? `${vehicle.owner.name} · ${maskCpfCnpj(vehicle.owner.document)}`
+          : vehicle.owner.name,
       }));
     },
     [clientId],
@@ -267,13 +359,16 @@ export default function ServiceOrdersPage() {
     }));
   }, []);
 
-  // Auto-seleção do veículo criado pelo atalho (issue #21) — só se for do cliente atual.
+  // Auto-seleção do veículo e do respectivo proprietário (cliente) ao retornar do VehicleFormDialog
   useEffect(() => {
-    if (newVehicle && newVehicle.owner.id === clientId) {
-      setVehicleId(newVehicle.id);
-      setVehicleLabel(`${newVehicle.license_plate ?? "Sem placa"} — ${newVehicle.brand} ${newVehicle.model}`);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!newVehicle) return;
+    vehicleCache.current.set(newVehicle.id, newVehicle);
+    setClientId(newVehicle.owner.id);
+    setClientLabel(newVehicle.owner.name);
+    setVehicleId(newVehicle.id);
+    setVehicleLabel(
+      `${newVehicle.license_plate ?? "Sem placa"} — ${newVehicle.brand} ${newVehicle.model}`,
+    );
   }, [newVehicle]);
 
   function handleProductCreated(product: Product) {
@@ -330,7 +425,13 @@ export default function ServiceOrdersPage() {
       });
       toast.success(`OS #${created.number} criada com sucesso.`);
       setDialogOpen(false);
-      await load(page, debouncedSearch, statusFilter);
+      await load(page, {
+        query: debouncedSearch, 
+        status: statusFilter,
+        brand: debouncedBrandFilter,
+        model: debouncedModelFilter,
+        mechanic: mechanicFilter,
+      });
     } catch (error) {
       setFieldErrors(extractFieldErrors(error));
       toast.error(extractApiErrorMessage(error, "Não foi possível criar a ordem de serviço."));
@@ -348,7 +449,7 @@ export default function ServiceOrdersPage() {
       onAdd={openCreate}
       addLabel="Nova OS"
     >
-      <div className="mb-4">
+      <div className="mb-4 grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <FormSelect
           label="Filtrar por status"
           value={statusFilter}
@@ -364,6 +465,35 @@ export default function ServiceOrdersPage() {
             </option>
           ))}
         </FormSelect>
+
+        <FormField
+          label="Marca do veículo"
+          value={brandFilter}
+          onChange={(e) => setBrandFilter(e.target.value)}
+          placeholder="Ex.: Volkswagen, Fiat..."
+          className="h-10 [&_input]:h-full"
+        />
+
+        <FormField
+          label="Modelo do veículo"
+          value={modelFilter}
+          onChange={(e) => setModelFilter(e.target.value)}
+          placeholder="Ex.: Gol, Argo..."
+          className="h-10 [&_input]:h-full"
+        />
+
+        <SearchableSelect
+          label="Mecânico"
+          value={mechanicFilter || null}
+          initialLabel={mechanicFilterLabel || null}
+          onChange={(id, option) => {
+            setMechanicFilter(id ?? "");
+            setMechanicFilterLabel(option?.primary ?? "");
+            setPage(1);
+          }}
+          searchOptions={searchMechanics}
+          placeholder="Todos os mecânicos"
+        />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface">
@@ -373,7 +503,7 @@ export default function ServiceOrdersPage() {
           </div>
         ) : orders.length === 0 ? (
           <p className="p-10 text-center text-sm text-muted-foreground">
-            {search || statusFilter
+            {search || statusFilter || brandFilter || modelFilter || mechanicFilter
               ? "Nenhuma ordem de serviço encontrada para os filtros."
               : "Nenhuma ordem de serviço registrada ainda."}
           </p>
@@ -384,6 +514,7 @@ export default function ServiceOrdersPage() {
                 <tr className="border-b border-border text-left text-xs uppercase text-muted-foreground">
                   <th className="px-4 py-3">OS</th>
                   <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3">Placa</th>
                   <th className="px-4 py-3 max-md:hidden">Veículo</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 max-lg:hidden">Data</th>
@@ -402,7 +533,11 @@ export default function ServiceOrdersPage() {
                     </td>
                     <td className="px-4 py-3">{order.client.name}</td>
                     <td className="px-4 py-3 text-muted-foreground max-md:hidden">
-                      {order.vehicle.license_plate ?? order.vehicle.model}
+                      {order.vehicle.license_plate}
+                    </td>
+                    
+                    <td className="px-4 py-3 text-muted-foreground max-md:hidden">
+                      {order.vehicle.model}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClasses[order.status]}`}>
@@ -440,10 +575,15 @@ export default function ServiceOrdersPage() {
             value={clientId || null}
             initialLabel={clientLabel || null}
             onChange={(id, option) => {
-              setClientId(id ?? "");
+              const nextClientId = id ?? "";
+              setClientId(nextClientId);
               setClientLabel(option?.primary ?? "");
-              setVehicleId("");
-              setVehicleLabel("");
+
+              const currentVehicle = vehicleId ? vehicleCache.current.get(vehicleId) : undefined;
+              if (!nextClientId || (currentVehicle && currentVehicle.owner.id !== nextClientId)) {
+                setVehicleId("");
+                setVehicleLabel("");
+              }
             }}
             searchOptions={searchClients}
             placeholder="Digite o nome, CPF ou telefone..."
@@ -456,14 +596,14 @@ export default function ServiceOrdersPage() {
             label="Veículo"
             value={vehicleId || null}
             initialLabel={vehicleLabel || null}
-            onChange={(id, option) => {
-              setVehicleId(id ?? "");
-              setVehicleLabel(option?.primary ?? "");
-            }}
+            onChange={handleVehicleSelect}
             searchOptions={searchVehicles}
-            placeholder={clientId ? "Digite a placa, marca ou modelo..." : "Selecione o cliente primeiro"}
+            placeholder={
+              clientId
+                ? "Digite a placa, marca ou modelo..."
+                : "Digite a placa para puxar veículo e cliente..."
+            }
             error={fieldErrors.vehicle ?? fieldErrors.vehicle_id}
-            disabled={!clientId}
             createLabel="Novo veículo"
             onCreate={() => setVehicleDialogOpen(true)}
           />
@@ -752,6 +892,7 @@ export default function ServiceOrdersPage() {
         onClose={() => setClientDialogOpen(false)}
         onSaved={(client) => {
           if (client) {
+            setNewClient(client);
             setClientId(client.id);
             setClientLabel(client.name);
             setVehicleId("");
@@ -766,7 +907,9 @@ export default function ServiceOrdersPage() {
         defaultValues={
           clientId ? { owner_id: clientId, owner_label: clientLabel } : undefined
         }
+        newClient={newClient}
         onSaved={(vehicle) => setNewVehicle(vehicle ?? null)}
+        onCreateClient={() => setClientDialogOpen(true)}
       />
 
       <ProductFormDialog

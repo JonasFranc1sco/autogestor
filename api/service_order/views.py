@@ -42,6 +42,31 @@ class ServiceOrderViewSet(TenantViewSetMixin, viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     MECHANIC_EDITABLE_FIELDS = {"observations"}
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        params = self.request.query_params
+        
+        vehicle_brand = (params.get("vehicle_brand") or "").strip()
+        if vehicle_brand:
+            queryset = queryset.filter(vehicle__brand__icontains=vehicle_brand)
+            
+        vehicle_model = (params.get("vehicle_model") or "").strip()
+        if vehicle_model:
+            queryset = queryset.filter(vehicle__model__icontains=vehicle_model)
+            
+        mechanic = (params.get("mechanic") or "").strip()
+        if mechanic:
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            
+            try:
+                queryset = queryset.filter(services__mechanic_id=mechanic).distinct()
+            except (DjangoValidationError, ValueError):
+                return queryset.none()
+        
+        return queryset
+            
+    
 
     def update(self, request, *args, **kwargs):
         if request.user.role == Role.MECHANIC:
