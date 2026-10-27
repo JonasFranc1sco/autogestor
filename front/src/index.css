@@ -175,4 +175,51 @@
   animation: logo-pulse 3s ease-in-out infinite;
 }
 
+@keyframes ambient-glow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1) translateY(0);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1) translateY(-10px);
+  }
+}
+
+@keyframes float-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+.animate-ambient-glow {
+  animation: ambient-glow 8s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float-slow 4s ease-in-out infinite;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 3s ease-in-out infinite;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
 @page { margin:0; }

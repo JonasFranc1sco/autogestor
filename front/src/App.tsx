@@ -21,6 +21,26 @@ import ReportsPage from "@/pages/Reports";
 import UsersPage from "@/pages/Users";
 import SettingsPage from "@/pages/Settings";
 import RecoverPasswordPage from "@/pages/RecoverPassword";
+import LandingPage from "@/pages/LandingPage";
+import { useAuth } from "@/contexts/AuthContext";
+
+function RootRoute() {
+  const { accessToken, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#08090c]">
+        <div className="text-zinc-400">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (accessToken) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <LandingPage />;
+}
 
 function App() {
   return (
@@ -28,6 +48,8 @@ function App() {
       <AuthProvider>
         <Toaster richColors position="top-right" />
         <Routes>
+          <Route path="/" element={<RootRoute />} />
+          <Route path="/landing" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route
             element={
@@ -36,7 +58,7 @@ function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/clientes" element={<ClientsPage />} />
             <Route path="/veiculos" element={<VehiclesPage />} />
             <Route path="/produtos" element={<ProductsPage />} />
