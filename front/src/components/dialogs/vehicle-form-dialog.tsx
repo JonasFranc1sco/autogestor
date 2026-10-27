@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Dialog } from "@/components/layout/Dialog";
 import { FormField } from "@/components/ui/form";
 import { SearchableSelect, type SearchableOption } from "@/components/ui/searchable-select";
-import { createVehicle, updateVehicle, type Vehicle } from "@/services/vehicle.service";
+import { createVehicle, updateVehicle, getVehicles, type Vehicle } from "@/services/vehicle.service";
 import { getClients, type Client } from "@/services/client.service";
 import { maskCpfCnpj, maskPlate, isValidPlate } from "@/lib/masks";
 import { tryParseDecimal, tryParseDecimalNumber } from "@/lib/format";
@@ -57,6 +57,8 @@ export function VehicleFormDialog({
   const [form, setForm] = useState<FormValues>(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [matchedVehicle, setMatchedVehicle] = useState<Vehicle | null>(null);
+  const plateLookupRef = useRef(0);
 
   // Congela defaultValues/newClient no momento da abertura.
   const defaultsRef = useRef(defaultValues);
@@ -66,6 +68,7 @@ export function VehicleFormDialog({
   useEffect(() => {
     if (!open) return;
     const defaults = defaultsRef.current;
+    setMatchedVehicle(null);
     if (editing) {
       setForm({
         owner_id: editing.owner.id,
@@ -106,6 +109,51 @@ export function VehicleFormDialog({
     }));
   }, []);
 
+  async function handlePlateChange(rawValue: string) {
+    const cleanPlate = maskPlate(rawValue);
+    setForm((current) => ({ ...current, license_plate: cleanPlate }));
+
+    if (editing) return;
+
+    if (cleanPlate.length < 7 || !isValidPlate(cleanPlate)) {
+      if (matchedVehicle) {
+        setMatchedVehicle(null);
+      }
+      return;
+    }
+
+    const requestId = ++plateLookupRef.current;
+    try {
+      const results = await getVehicles(cleanPlate);
+      if (requestId !== plateLookupRef.current) return;
+
+      const exact = results.find(
+        (v) => (v.license_plate ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "") === cleanPlate,
+      );
+
+      if (exact) {
+        setMatchedVehicle(exact);
+        setForm({
+          owner_id: exact.owner.id,
+          owner_label: exact.owner.name,
+          license_plate: exact.license_plate ?? cleanPlate,
+          year: exact.year ? String(exact.year) : "",
+          brand: exact.brand,
+          mileage: exact.mileage ?? "",
+          model: exact.model,
+          color: exact.color ?? "",
+          chassis: exact.chassis ?? "",
+        });
+        setFieldErrors({});
+        toast.info(`Veículo encontrado! Dados de ${exact.owner.name} preenchidos automaticamente.`);
+      } else {
+        setMatchedVehicle(null);
+      }
+    } catch {
+      // Silencioso em caso de falha de rede na busca automática
+    }
+  }
+
   function validate(): boolean {
     const errors: Record<string, string> = {};
     if (!form.owner_id) errors.owner_id = "Selecione o proprietário.";
@@ -144,9 +192,13 @@ export function VehicleFormDialog({
 
     try {
       if (editing) {
-        await updateVehicle(editing.id, payload);
+        const updated = await updateVehicle(editing.id, payload);
         toast.success("Veículo atualizado com sucesso.");
-        onSaved();
+        onSaved(updated);
+      } else if (matchedVehicle) {
+        const updated = await updateVehicle(matchedVehicle.id, payload);
+        toast.success("Veículo e cliente vinculados com sucesso.");
+        onSaved(updated);
       } else {
         const created = await createVehicle(payload);
         toast.success("Veículo cadastrado com sucesso.");
@@ -192,7 +244,7 @@ export function VehicleFormDialog({
           label="Placa"
           optional
           value={maskPlate(form.license_plate)}
-          onChange={(e) => setForm({ ...form, license_plate: e.target.value })}
+          onChange={(e) => void handlePlateChange(e.target.value)}
           placeholder="BRA2E19"
           error={fieldErrors.license_plate}
           maxLength={7}

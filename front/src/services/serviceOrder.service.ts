@@ -169,18 +169,28 @@ export async function getServiceOrders(search?: string, status?: string): Promis
   return response.data.results;
 }
 
-export async function getServiceOrdersPaginated(params?: {
+export interface ServiceOrderListParams {
   page?: number;
   page_size?: number;
   search?: string;
   status?: string;
-}): Promise<Paginated<ServiceOrder>> {
+  vehicle_brand?:string;
+  vehicle_model?:string;
+  mechanic?:string;
+}
+
+export async function getServiceOrdersPaginated(
+  params?: ServiceOrderListParams,
+): Promise<Paginated<ServiceOrder>> {
   const response = await api.get<Paginated<ServiceOrder>>("/api/service-orders/", {
     params: {
       page: params?.page ?? 1,
       page_size: params?.page_size ?? DEFAULT_PAGE_SIZE,
       ...(params?.search ? { search: params.search } : {}),
       ...(params?.status ? { status: params.status } : {}),
+      ...(params?.vehicle_brand ? {vehicle_brand: params.vehicle_brand} : {}),
+      ...(params?.vehicle_model ? {vehicle_model: params.vehicle_model} : {}),
+      ...(params?.mechanic ? {mechanic: params.mechanic} : {}),
     },
   });
   return response.data;
