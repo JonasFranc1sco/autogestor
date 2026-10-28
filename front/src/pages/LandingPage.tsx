@@ -11,9 +11,6 @@ import {
   IconUsers,
   IconArrowRight,
   IconChevronDown,
-  IconSparkles,
-  IconClock,
-  IconTrendingUp,
 } from "@tabler/icons-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -27,23 +24,17 @@ export default function LandingPage() {
 
   const PILLARS = [
     {
-      tag: "Operação & Diagnóstico",
-      title: "Ordens de Serviço em segundos, sem papel",
-      image: "/images/marketing/ordem-servico-diagnostico.jpg",
-      icon: IconClipboardList,
+      title: "Ordens de Serviço e Orçamentos em segundos, sem papel",
       description:
         "Diga adeus às fichas amassadas e notas de mão esquecidas na bancada. Registre o diagnóstico, adicione peças e serviços e gere o checklist completo do veículo.",
       details: [
         "Acompanhamento de status em tempo real (Aguardando, Em Andamento, Concluída)",
-        "Impressão formatada para entrega ao cliente em 1 clique",
+        "PDF ou impressão formatada para entrega ao cliente em 1 clique",
         "Atribuição de mecânicos responsáveis por cada serviço",
       ],
     },
     {
-      tag: "Fidelização & Confiança",
       title: "Histórico completo do veículo pela placa",
-      image: "/images/marketing/veiculo-elevador.jpg",
-      icon: IconCar,
       description:
         "Quando o cliente retornar, saiba na hora tudo o que já foi feito, quilometragem anterior, peças trocadas e quando foi a última revisão.",
       details: [
@@ -53,16 +44,23 @@ export default function LandingPage() {
       ],
     },
     {
-      tag: "Controle & Lucro",
-      title: "Estoque sincronizado e caixa fechado",
-      image: "/images/marketing/ferramentas-estoque.jpg",
-      icon: IconCash,
+      title: "Controle de estoque sincronizado a cada serviço",
       description:
-        "Peças baixadas automaticamente do estoque assim que a OS é aprovada. Saiba exatamente a margem de lucro de cada serviço e comissão dos mecânicos.",
+        "Peças baixadas automaticamente do inventário assim que a OS é aprovada. Evite rupturas na bancada e saiba o custo e a margem de cada item utilizado.",
       details: [
         "Avisos automáticos de peças com estoque no nível crítico",
-        "Fluxo de caixa diário com entradas, saídas e formas de pagamento",
-        "Relatórios consolidados de faturamento sem necessidade de planilhas",
+        "Catálogo completo com preço de custo, venda e margem de lucro",
+        "Histórico de movimentações vinculado diretamente às ordens de serviço",
+      ],
+    },
+    {
+      title: "Caixa fechado, comissões e relatórios em 1 clique",
+      description:
+        "Tenha visão exata do que entra e sai da oficina todos os dias. Calcule comissões de mecânicos sem planilhas manuais e acompanhe a evolução do faturamento.",
+      details: [
+        "Fluxo de caixa diário com entradas, saídas, sangrias e formas de pagamento",
+        "Cálculo preciso de comissões por mecânico e por serviço executado",
+        "Relatórios consolidados de faturamento e ticket médio da oficina",
       ],
     },
   ];
@@ -139,32 +137,29 @@ export default function LandingPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#08090c] text-zinc-100 selection:bg-orange-500/30 selection:text-orange-200 antialiased">
+    <div className="min-h-screen bg-white text-zinc-900 selection:bg-orange-500/20 selection:text-orange-900 antialiased">
       {/* HEADER / NAVBAR */}
-      <header className="sticky top-0 z-50 border-b border-zinc-800/80 bg-[#08090c]/85 backdrop-blur-md">
+      <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
-          <Link to="/" className="flex items-center gap-2.5 text-xl font-black tracking-tight text-white group">
-            <span className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md shadow-orange-900/30 transition-transform group-hover:scale-105">
-              <IconCar size={20} stroke={2.2} />
-            </span>
+          <Link to="/" className="flex items-center gap-2.5 text-xl font-black tracking-tight text-zinc-900 group">
             <span className="tracking-wider">
-              AUTO<span className="text-orange-500">GESTOR</span>
+              AUTO<span className="text-orange-600">GESTOR</span>
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold text-zinc-400">
-            <a href="#pilares" className="transition hover:text-white">Pilares</a>
-            <a href="#funcionalidades" className="transition hover:text-white">Recursos</a>
-            <a href="#como-funciona" className="transition hover:text-white">Como Funciona</a>
-            <a href="#planos" className="transition hover:text-white">Planos</a>
-            <a href="#faq" className="transition hover:text-white">Dúvidas</a>
+          <nav className="hidden md:flex items-center gap-7 text-xs font-semibold text-zinc-600">
+            <a href="#pilares" className="transition hover:text-zinc-900">Pilares</a>
+            <a href="#funcionalidades" className="transition hover:text-zinc-900">Recursos</a>
+            <a href="#como-funciona" className="transition hover:text-zinc-900">Como Funciona</a>
+            <a href="#planos" className="transition hover:text-zinc-900">Planos</a>
+            <a href="#faq" className="transition hover:text-zinc-900">Dúvidas</a>
           </nav>
 
           <div className="flex items-center gap-3">
             {accessToken ? (
               <Link
                 to="/dashboard"
-                className="flex items-center gap-1.5 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-orange-900/30 transition hover:bg-orange-500 active:scale-[0.98]"
+                className="flex items-center gap-1.5 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition hover:bg-orange-500 active:scale-[0.98]"
               >
                 <span>Ir para o Painel</span>
                 <IconArrowRight size={14} />
@@ -173,15 +168,9 @@ export default function LandingPage() {
               <>
                 <Link
                   to="/login"
-                  className="rounded-xl px-3.5 py-2 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800/70 hover:text-white"
+                  className="rounded-xl px-3.5 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-900"
                 >
-                  Entrar
-                </Link>
-                <Link
-                  to="/login"
-                  className="rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-orange-900/40 transition hover:bg-orange-500 active:scale-[0.98]"
-                >
-                  Criar Oficina
+                  Sobre nós
                 </Link>
               </>
             )}
@@ -190,309 +179,200 @@ export default function LandingPage() {
       </header>
 
       <main className="space-y-28 pb-24">
-        {/* HERO SECTION COM GLOW ATMOSFÉRICO E BACKGROUND CINEMÁTICO */}
+        {/* HERO SECTION COM HEADLINE À ESQUERDA E IMAGEM À DIREITA */}
         <section className="relative isolate overflow-hidden pt-12 sm:pt-20">
-          {/* Imagem de Fundo Fotográfica com Vignette & Gradient Mesh */}
+          {/* Imagem de Fundo Fotográfica com Vignette & Gradient Mesh Claro */}
           <div className="pointer-events-none absolute inset-0 -z-20 overflow-hidden">
             <img
-              src="/images/marketing/hero-motor-detalhe.jpg"
-              alt="Motor moderno de alta precisão em oficina mecânica"
-              className="size-full object-cover object-center opacity-25 filter grayscale contrast-125"
+              src="/images/marketing/garage.jpg"
+              alt="Oficina mecânica moderna"
+              className="size-full object-cover object-center opacity-15 filter grayscale contrast-125"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-[#08090c]/50 via-[#08090c]/85 to-[#08090c]" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_75%_50%_at_50%_15%,rgba(249,115,22,0.18),transparent)]" />
+            <div className="absolute inset-0 bg-gradient-to-b from-white/60 via-white/90 to-white" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_75%_50%_at_50%_15%,rgba(249,115,22,0.12),transparent)]" />
           </div>
 
           {/* Aura luminosa animada de fundo */}
           <div className="pointer-events-none absolute -top-32 left-1/2 -z-10 size-[32rem] -translate-x-1/2 rounded-full bg-orange-500/10 blur-[110px] animate-ambient-glow" />
 
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div className="mx-auto max-w-3xl text-center">
-              {/* Badge Minimalista com Micro-interação */}
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/30 bg-orange-500/10 px-4 py-1.5 text-xs font-semibold text-orange-300 shadow-sm backdrop-blur-md animate-float">
-                <IconSparkles size={14} className="text-orange-400" />
-                <span className="tracking-wide">Plataforma Especializada para Oficinas & Autocenters</span>
-              </div>
-
-              {/* Headline Principal de Alto Impacto */}
-              <h1 className="mt-7 text-3xl font-extrabold tracking-tight text-white sm:text-5xl sm:leading-[1.14]">
-                Sua oficina sem pranchetas. <br className="hidden sm:inline" />
-                <span className="bg-gradient-to-r from-orange-400 via-amber-300 to-yellow-200 bg-clip-text text-transparent">
-                  Toda a sua operação no piloto automático.
-                </span>
-              </h1>
-
-              {/* Subheadline Persuasiva */}
-              <p className="mt-5 text-sm leading-relaxed text-zinc-300 sm:text-base sm:leading-relaxed">
-                O <strong>Autogestor</strong> centraliza ordens de serviço com checklist, histórico veicular pela placa,
-                baixa automática no estoque de peças e fechamento de caixa sem surpresas. Mais velocidade na bancada e mais lucro no final do mês.
-              </p>
-
-              {/* CTAs de Ação com Efeito Glow */}
-              <div className="mt-8 flex flex-col items-center justify-center gap-3.5 sm:flex-row">
-                <Link
-                  to={accessToken ? "/dashboard" : "/login"}
-                  className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-orange-600 px-6 py-3.5 text-sm font-bold text-white shadow-xl shadow-orange-950/50 transition-all duration-200 hover:bg-orange-500 hover:shadow-orange-800/40 active:scale-[0.98] sm:w-auto"
-                >
-                  <span>{accessToken ? "Acessar Sistema" : "Começar Agora Gratuitamente"}</span>
-                  <IconArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-                </Link>
-
-                <a
-                  href="#pilares"
-                  className="w-full rounded-xl border border-zinc-800 bg-zinc-900/70 px-6 py-3.5 text-sm font-medium text-zinc-200 shadow-sm backdrop-blur-sm transition hover:border-zinc-700 hover:bg-zinc-800 sm:w-auto"
-                >
-                  Conhecer Recursos
-                </a>
-              </div>
-
-              {/* Micro-benefícios de Confiança */}
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-4 text-xs text-zinc-400">
-                <span className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-emerald-400" />
-                  Sem taxa de adesão
-                </span>
-                <span className="hidden text-zinc-700 sm:inline">&middot;</span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-emerald-400" />
-                  Isolamento total multi-oficina
-                </span>
-                <span className="hidden text-zinc-700 sm:inline">&middot;</span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-emerald-400" />
-                  Pronto para celular e desktop
-                </span>
-              </div>
-            </div>
-
-            {/* PREVIEW DO SISTEMA (MOCKUP VISUAL INTERATIVO) */}
-            <div className="mt-14 relative mx-auto max-w-5xl rounded-2xl border border-zinc-800/90 bg-zinc-900/90 p-2 sm:p-3 shadow-2xl backdrop-blur-xl">
-              <div className="flex items-center justify-between border-b border-zinc-800/80 px-3 py-2 text-xs text-zinc-400">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    <span className="size-2.5 rounded-full bg-red-500/80" />
-                    <span className="size-2.5 rounded-full bg-yellow-500/80" />
-                    <span className="size-2.5 rounded-full bg-green-500/80" />
-                  </div>
-                  <span className="ml-2 font-mono text-[11px] text-zinc-500">painel.autogestor.com.br</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="rounded bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold text-orange-400">
-                    Ao Vivo
+          <div className="mx-auto max-w-[90rem] px-6 sm:px-10 lg:px-16">
+            <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-16 xl:gap-24">
+              {/* Coluna da Esquerda: Headline & CTAs */}
+              <div className="text-center lg:col-span-5 lg:text-left">
+                <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl lg:text-5xl lg:leading-[1.12]">
+                  Sua oficina sem papelada.{" "}
+                  <span className="bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 bg-clip-text text-transparent">
+                    Todo o controle na palma da sua mão.
                   </span>
+                </h1>
+
+                <p className="mt-5 text-base leading-relaxed text-zinc-600 sm:text-lg sm:leading-relaxed">
+                  O Autogestor centraliza e agrupa ordens de serviço, histórico veicular pela placa,
+                  baixa automática no estoque de peças, fechamento de caixa e outros. Mais velocidade na bancada e mais lucro no final do mês.
+                </p>
+
+                <div className="mt-8 flex flex-col items-center justify-center gap-3.5 sm:flex-row lg:justify-start">
+                  <Link
+                    to={accessToken ? "/dashboard" : "/login"}
+                    className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-orange-600 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition-all duration-200 hover:bg-orange-500 hover:shadow-orange-500/35 active:scale-[0.98] sm:w-auto"
+                  >
+                    <span>{accessToken ? "Acessar Sistema" : "Entrar em contato"}</span>
+                    <IconArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+                  </Link>
+
+                  <a
+                    href="#pilares"
+                    className="w-full rounded-xl border border-zinc-300 bg-white/90 px-6 py-3.5 text-center text-sm font-medium text-zinc-700 shadow-sm backdrop-blur-sm transition hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-900 sm:w-auto"
+                  >
+                    Conhecer Recursos
+                  </a>
                 </div>
               </div>
 
-              {/* Grid de Métricas Simuladas do Dashboard */}
-              <div className="grid gap-3 p-4 sm:grid-cols-4">
-                <div className="rounded-xl border border-zinc-800 bg-[#0e1015] p-3">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Ordens em Aberto</span>
-                    <IconClipboardList size={16} className="text-orange-400" />
-                  </div>
-                  <p className="mt-2 text-2xl font-black text-white">14 <span className="text-xs font-normal text-zinc-400">veículos</span></p>
-                  <p className="mt-1 text-[11px] text-emerald-400 font-medium">↑ 3 finalizadas hoje</p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-800 bg-[#0e1015] p-3">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Faturamento do Mês</span>
-                    <IconTrendingUp size={16} className="text-emerald-400" />
-                  </div>
-                  <p className="mt-2 text-2xl font-black text-white">R$ 28.450</p>
-                  <p className="mt-1 text-[11px] text-zinc-400 font-medium">Ticket médio R$ 420</p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-800 bg-[#0e1015] p-3">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Peças em Baixa</span>
-                    <IconPackage size={16} className="text-amber-400" />
-                  </div>
-                  <p className="mt-2 text-2xl font-black text-white">4 <span className="text-xs font-normal text-zinc-400">itens</span></p>
-                  <p className="mt-1 text-[11px] text-amber-400 font-medium">Aviso de reposição ativo</p>
-                </div>
-
-                <div className="rounded-xl border border-zinc-800 bg-[#0e1015] p-3">
-                  <div className="flex items-center justify-between text-zinc-400 text-xs">
-                    <span>Tempo Médio / OS</span>
-                    <IconClock size={16} className="text-blue-400" />
-                  </div>
-                  <p className="mt-2 text-2xl font-black text-white">1h 45m</p>
-                  <p className="mt-1 text-[11px] text-emerald-400 font-medium">-22% de tempo ocioso</p>
-                </div>
-              </div>
-
-              {/* Tabela Resumo Mockup */}
-              <div className="px-4 pb-4">
-                <div className="overflow-hidden rounded-xl border border-zinc-800/90 bg-[#0b0d12]">
-                  <div className="flex items-center justify-between border-b border-zinc-800/80 px-4 py-2.5 text-xs font-semibold text-zinc-300">
-                    <span>Últimas Ordens de Serviço</span>
-                    <span className="text-[11px] text-zinc-500">Atualizado agora</span>
-                  </div>
-                  <div className="divide-y divide-zinc-800/60 text-xs">
-                    <div className="flex items-center justify-between px-4 py-2.5">
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono font-bold text-orange-400">#OS-1048</span>
-                        <div>
-                          <p className="font-semibold text-white">Toyota Corolla 2.0 (2022)</p>
-                          <p className="text-[11px] text-zinc-400">Placa: BRA2E19 &middot; Troca de pastilhas e fluído</p>
-                        </div>
-                      </div>
-                      <span className="rounded-md bg-blue-500/10 px-2 py-0.5 text-[11px] font-semibold text-blue-400 border border-blue-500/20">
-                        Em Execução
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between px-4 py-2.5">
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono font-bold text-orange-400">#OS-1047</span>
-                        <div>
-                          <p className="font-semibold text-white">Volkswagen Gol 1.6 MSI</p>
-                          <p className="text-[11px] text-zinc-400">Placa: RIO4X90 &middot; Revisão preventiva 60.000 km</p>
-                        </div>
-                      </div>
-                      <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/20">
-                        Pronto p/ Entrega
-                      </span>
-                    </div>
-                  </div>
+              {/* Coluna da Direita: Imagem do Sistema em Proporção 16:9 de Monitor */}
+              <div className="lg:col-span-7">
+                <div className="relative w-full overflow-hidden rounded-2xl border border-zinc-200/90 bg-white shadow-2xl shadow-zinc-900/10">
+                  <img
+                    src="/images/marketing/demonstracao.png"
+                    alt="Painel do sistema Autogestor"
+                    className="size-full object-cover"
+                  />
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* PILARES DE VALOR (ESTILO CARDS DO CORTIVA) */}
+        {/* PROBLEMA E PROPOSTA DE VALOR */}
+        <section id="proposta-valor" className="mx-auto max-w-6xl px-4 sm:px-6 scroll-mt-24">
+          <div className="mx-auto max-w-4xl text-center">
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl lg:text-5xl">
+              Qual o valor do tempo dentro da sua oficina?
+            </h2>
+            <p className="mt-4 text-base leading-relaxed text-zinc-600 sm:text-lg">
+              O ambiente de trabalho nos seus dias mais agitados tende a ter um curto período de tempo disponível, tempo esse que é importante para anotar serviços, peças, o que saiu e o que entrou.
+            </p>
+          </div>
+
+          <div className="mt-12 grid gap-8 md:grid-cols-2">
+            {/* Card 1: O Problema (Cinza / Preto e Branco) */}
+            <div className="flex flex-col justify-between rounded-3xl border border-zinc-200 bg-zinc-100/80 p-8 sm:p-10 shadow-sm">
+              <div>
+                <span className="inline-block rounded-lg py-1 text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Gestão no Papel e Improviso
+                </span>
+                <h3 className="mt-5 text-xl font-bold tracking-tight text-zinc-800 leading-snug sm:text-2xl">
+                  A falta de integridade e segurança dos dados
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-zinc-600">
+                  Sem um sistema dedicado, informações importantes se perdem entre a recepção e os elevadores.
+                </p>
+              </div>
+
+              <ul className="mt-7 space-y-3.5 border-t border-zinc-200 pt-6 text-sm text-zinc-600">
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-zinc-400 shrink-0">✕</span>
+                  <span>Ordens de serviço em papel rasgado, manchado de graxa ou com letra ilegível.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-zinc-400 shrink-0">✕</span>
+                  <span>Cliente liga perguntando o andamento do veículo e ninguém sabe responder rápido.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-zinc-400 shrink-0">✕</span>
+                  <span>Peças aplicadas nos carros sem registro na nota, causando prejuízo invisível no estoque.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-zinc-400 shrink-0">✕</span>
+                  <span>Horas perdidas no fim do mês somando comissões e tentando fechar o caixa no caderno.</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Card 2: A Proposta de Valor (Detalhes na Cor do Sistema) */}
+            <div className="flex flex-col justify-between rounded-3xl border border-orange-500/40 bg-white p-8 sm:p-10 shadow-xl shadow-orange-500/10">
+              <div>
+                <span className="inline-block rounded-lg py-1 text-xs font-bold uppercase tracking-wider text-orange-600">
+                  Autogestor
+                </span>
+                <h3 className="mt-5 text-xl font-bold tracking-tight text-zinc-900 leading-snug sm:text-2xl">
+                  Padronização, agilidade no atendimento e margem protegida
+                </h3>
+                <p className="mt-3 text-sm leading-relaxed text-zinc-600">
+                  Toda a operação conectada em uma única plataforma rápida, clara e feita para a rotina da oficina.
+                </p>
+              </div>
+
+              <ul className="mt-7 space-y-3.5 border-t border-orange-500/20 pt-6 text-sm text-zinc-700">
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-orange-600 shrink-0">✓</span>
+                  <span>Orçamentos e OS digitais padronizadas, prontas para imprimir ou enviar digitalmente em segundos.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-orange-600 shrink-0">✓</span>
+                  <span>Status em tempo real e histórico completo do veículo acessível apenas pela placa.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-orange-600 shrink-0">✓</span>
+                  <span>Baixa automática de peças no momento da aprovação da OS com alertas de reposição.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="font-bold text-orange-600 shrink-0">✓</span>
+                  <span>Caixa diário integrado e relatórios de faturamento e comissões gerados em 1 clique.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* PILARES DE VALOR */}
         <section id="pilares" className="mx-auto max-w-6xl px-4 sm:px-6 scroll-mt-24">
-          <div className="mx-auto max-w-2xl text-center">
-            <span className="text-xs font-bold uppercase tracking-widest text-orange-400">Pilares do Sistema</span>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl lg:text-5xl">
               Tudo o que sua oficina precisa para rodar sem atrito
             </h2>
-            <p className="mt-2.5 text-sm text-zinc-400">
+            <p className="mt-4 text-base leading-relaxed text-zinc-600 sm:text-lg">
               Projetado com base nas dores reais do pátio: agilidade no balcão, rastreabilidade na bancada e precisão no fechamento.
             </p>
           </div>
 
-          <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {PILLARS.map((pillar) => {
-              const PillarIcon = pillar.icon;
-              return (
-                <article
-                  key={pillar.title}
-                  className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-zinc-800/90 bg-[#0f1117] shadow-xl transition-all duration-300 hover:border-orange-500/40 hover:bg-[#131620]"
-                >
-                  {pillar.image && (
-                    <div className="relative h-48 w-full overflow-hidden border-b border-zinc-800/80">
-                      <img
-                        src={pillar.image}
-                        alt={pillar.title}
-                        className="size-full object-cover transition-transform duration-500 group-hover:scale-105 filter grayscale contrast-115"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#0f1117] via-[#0f1117]/35 to-transparent" />
-                    </div>
-                  )}
-
-                  <div className="p-7">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-block rounded-lg bg-orange-500/10 border border-orange-500/20 px-2.5 py-1 text-xs font-semibold text-orange-300">
-                        {pillar.tag}
-                      </span>
-                      <span className="rounded-xl bg-zinc-800/70 p-2.5 text-orange-400">
-                        <PillarIcon size={20} stroke={2} />
-                      </span>
-                    </div>
-
-                    <h3 className="mt-5 text-lg font-bold tracking-tight text-white leading-snug">
+          <div className="mt-12 grid gap-8 md:grid-cols-2">
+            {PILLARS.map((pillar) => (
+              <article
+                key={pillar.title}
+                className="group flex flex-col justify-between overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-lg shadow-zinc-900/5 transition-all duration-300 hover:border-orange-500/50 hover:shadow-xl"
+              >
+                <div className="flex flex-1 flex-col justify-between p-8 sm:p-10">
+                  <div>
+                    <h3 className="text-xl font-bold tracking-tight text-zinc-900 leading-snug sm:text-2xl">
                       {pillar.title}
                     </h3>
-                    <p className="mt-2.5 text-xs leading-relaxed text-zinc-400">
+                    <p className="mt-3 text-sm leading-relaxed text-zinc-600">
                       {pillar.description}
                     </p>
-
-                    <ul className="mt-6 space-y-2.5 border-t border-zinc-800/80 pt-5 text-xs text-zinc-300">
-                      {pillar.details.map((item) => (
-                        <li key={item} className="flex items-start gap-2.5">
-                          <span className="font-bold text-orange-400 shrink-0">✓</span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
 
-        {/* COMPARATIVO: MÉTODO ANTIGO VS AUTOGESTOR */}
-        <section className="mx-auto max-w-5xl px-4 sm:px-6">
-          <div className="rounded-3xl border border-zinc-800 bg-gradient-to-b from-[#11131a] to-[#0b0c10] p-6 sm:p-10">
-            <div className="text-center max-w-xl mx-auto">
-              <span className="text-xs font-bold uppercase tracking-wider text-orange-400">A Diferença na Prática</span>
-              <h3 className="mt-2 text-xl sm:text-2xl font-bold text-white">
-                O fim da prancheta e das anotações perdidas
-              </h3>
-            </div>
-
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {/* O jeito antigo */}
-              <div className="rounded-2xl border border-red-500/20 bg-red-950/10 p-5">
-                <p className="text-xs font-bold text-red-400 uppercase tracking-wide">Sem o Autogestor (Antigo)</p>
-                <ul className="mt-4 space-y-2.5 text-xs text-zinc-300">
-                  <li className="flex items-start gap-2">
-                    <span className="text-red-400 font-bold shrink-0">✕</span>
-                    <span>Ordem de serviço em papel molhado ou com letra ilegível.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-red-400 font-bold shrink-0">✕</span>
-                    <span>Cliente liga perguntando o status e ninguém no balcão sabe informar.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-red-400 font-bold shrink-0">✕</span>
-                    <span>Peça instalada no carro sem lançamento, gerando prejuízo no estoque.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-red-400 font-bold shrink-0">✕</span>
-                    <span>Horas perdidas no fim do mês somando notas para pagar comissão.</span>
-                  </li>
-                </ul>
-              </div>
-
-              {/* Com o Autogestor */}
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/10 p-5">
-                <p className="text-xs font-bold text-emerald-400 uppercase tracking-wide">Com o Autogestor (Moderno)</p>
-                <ul className="mt-4 space-y-2.5 text-xs text-zinc-200">
-                  <li className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                    <span>OS digital completa com dados de peças, mão de obra e fotos.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                    <span>Status atualizado no sistema visível por qualquer funcionário da oficina.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                    <span>Baixa automática de inventário no momento da aprovação do serviço.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                    <span>Relatórios prontos em 1 clique com comissões calculadas com exatidão.</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
+                  <ul className="mt-7 space-y-3 border-t border-zinc-200/80 pt-6 text-sm text-zinc-700">
+                    {pillar.details.map((item) => (
+                      <li key={item} className="flex items-start gap-2.5">
+                        <span className="font-bold text-orange-600 shrink-0">✓</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </article>
+            ))}
           </div>
         </section>
 
         {/* GRID DE MÓDULOS E FUNCIONALIDADES */}
         <section id="funcionalidades" className="mx-auto max-w-6xl px-4 sm:px-6 scroll-mt-24">
-          <div className="mx-auto max-w-2xl text-center">
-            <span className="text-xs font-bold uppercase tracking-widest text-orange-400">Recursos Completos</span>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl lg:text-5xl">
               Projetado para toda a rotina da sua oficina
             </h2>
-            <p className="mt-2.5 text-sm text-zinc-400">
+            <p className="mt-4 text-base leading-relaxed text-zinc-600 sm:text-lg">
               Cada módulo foi desenvolvido para reduzir etapas burocráticas e dar velocidade à sua equipe.
             </p>
           </div>
@@ -503,13 +383,13 @@ export default function LandingPage() {
               return (
                 <div
                   key={feat.title}
-                  className="rounded-2xl border border-zinc-800/80 bg-[#0d0f14] p-5 transition hover:border-zinc-700 hover:bg-[#12151d]"
+                  className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-5 transition hover:border-orange-500/30 hover:bg-white hover:shadow-md"
                 >
-                  <div className="inline-flex size-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-400">
+                  <div className="inline-flex size-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600">
                     <FeatIcon size={20} stroke={2} />
                   </div>
-                  <h4 className="mt-3.5 text-sm font-bold text-white">{feat.title}</h4>
-                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">{feat.description}</p>
+                  <h4 className="mt-3.5 text-sm font-bold text-zinc-900">{feat.title}</h4>
+                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-600">{feat.description}</p>
                 </div>
               );
             })}
@@ -519,91 +399,91 @@ export default function LandingPage() {
         {/* COMO FUNCIONA (3 PASSOS) */}
         <section id="como-funciona" className="mx-auto max-w-5xl px-4 sm:px-6 scroll-mt-24">
           <div className="text-center">
-            <span className="text-xs font-bold uppercase tracking-widest text-orange-400">Simples e Direto</span>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl lg:text-5xl">
               Como funciona o Autogestor na prática
             </h2>
           </div>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-3">
-            <div className="relative rounded-2xl border border-zinc-800 bg-[#0e1016] p-6 text-center">
-              <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-orange-500/20 text-sm font-black text-orange-400">
+            <div className="relative rounded-2xl border border-zinc-200 bg-zinc-50/70 p-6 text-center">
+              <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-orange-500/15 text-sm font-black text-orange-600">
                 1
               </span>
-              <h4 className="mt-4 text-base font-bold text-white">Cadastre sua Oficina</h4>
-              <p className="mt-2 text-xs text-zinc-400 leading-relaxed">
+              <h4 className="mt-4 text-base font-bold text-zinc-900">Cadastre sua Oficina</h4>
+              <p className="mt-2 text-xs text-zinc-600 leading-relaxed">
                 Configure os dados da oficina, convide os mecânicos e cadastre seus principais serviços e peças de estoque.
+                Cadastre os funcionários, 
               </p>
             </div>
 
-            <div className="relative rounded-2xl border border-zinc-800 bg-[#0e1016] p-6 text-center">
-              <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-orange-500/20 text-sm font-black text-orange-400">
+            <div className="relative rounded-2xl border border-zinc-200 bg-zinc-50/70 p-6 text-center">
+              <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-orange-500/15 text-sm font-black text-orange-600">
                 2
               </span>
-              <h4 className="mt-4 text-base font-bold text-white">Abra a Ordem de Serviço</h4>
-              <p className="mt-2 text-xs text-zinc-400 leading-relaxed">
+              <h4 className="mt-4 text-base font-bold text-zinc-900">Abra a Ordem de Serviço</h4>
+              <p className="mt-2 text-xs text-zinc-600 leading-relaxed">
                 Insira a placa do carro, associe o cliente, selecione os serviços necessários e imprima a via de entrada.
               </p>
             </div>
 
-            <div className="relative rounded-2xl border border-zinc-800 bg-[#0e1016] p-6 text-center">
-              <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-orange-500/20 text-sm font-black text-orange-400">
+            <div className="relative rounded-2xl border border-zinc-200 bg-zinc-50/70 p-6 text-center">
+              <span className="mx-auto flex size-10 items-center justify-center rounded-full bg-orange-500/15 text-sm font-black text-orange-600">
                 3
               </span>
-              <h4 className="mt-4 text-base font-bold text-white">Finalize e Lucre</h4>
-              <p className="mt-2 text-xs text-zinc-400 leading-relaxed">
+              <h4 className="mt-4 text-base font-bold text-zinc-900">Finalize e Lucre</h4>
+              <p className="mt-2 text-xs text-zinc-600 leading-relaxed">
                 Feche a OS com a forma de pagamento combinada, baixe as peças e veja o faturamento refletir no caixa.
               </p>
             </div>
           </div>
         </section>
 
-        {/* PLANO TRANSPARENTE (ESTILO CORTIVA) */}
+        {/* PLANO TRANSPARENTE */}
         <section id="planos" className="mx-auto max-w-4xl px-4 sm:px-6 scroll-mt-24">
-          <div className="relative overflow-hidden rounded-3xl border border-orange-500/30 bg-[#0e1017] p-8 text-center shadow-2xl sm:p-12">
+          <div className="relative overflow-hidden rounded-3xl border border-orange-500/30 bg-gradient-to-b from-orange-50/50 to-white p-8 text-center shadow-xl shadow-orange-500/5 sm:p-12">
             {/* Glows decorativos */}
             <div className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-orange-500/10 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-24 -left-24 size-80 rounded-full bg-orange-500/10 blur-3xl" />
 
             <div className="relative mx-auto max-w-lg">
-              <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-orange-300">
+              <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-orange-700">
                 Plano Oficina Completa
               </span>
 
-              <p className="mt-6 flex items-baseline justify-center gap-1.5 text-white">
+              <p className="mt-6 flex items-baseline justify-center gap-1.5 text-zinc-900">
                 <span className="tnum text-4xl font-extrabold sm:text-5xl">R$ 79,90</span>
-                <span className="text-sm font-medium text-zinc-400">/mês</span>
+                <span className="text-sm font-medium text-zinc-500">/mês</span>
               </p>
-              <p className="mt-2 text-sm font-semibold text-emerald-400">
+              <p className="mt-2 text-sm font-semibold text-emerald-600">
                 1º mês gratuito para você testar na sua oficina sem compromisso
               </p>
 
-              <ul className="mt-8 space-y-3 text-left text-xs text-zinc-300 sm:text-sm">
+              <ul className="mt-8 space-y-3 text-left text-xs text-zinc-700 sm:text-sm">
                 <li className="flex items-center gap-2.5">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-xs font-bold text-orange-400">✓</span>
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-bold text-orange-600">✓</span>
                   <span>Ordens de Serviço e orçamentos ilimitados</span>
                 </li>
                 <li className="flex items-center gap-2.5">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-xs font-bold text-orange-400">✓</span>
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-bold text-orange-600">✓</span>
                   <span>Histórico completo de veículos por placa e cliente</span>
                 </li>
                 <li className="flex items-center gap-2.5">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-xs font-bold text-orange-400">✓</span>
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-bold text-orange-600">✓</span>
                   <span>Controle de peças com aviso de estoque mínimo</span>
                 </li>
                 <li className="flex items-center gap-2.5">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-xs font-bold text-orange-400">✓</span>
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-bold text-orange-600">✓</span>
                   <span>Fechamento financeiro de caixa e comissões da equipe</span>
                 </li>
                 <li className="flex items-center gap-2.5">
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-xs font-bold text-orange-400">✓</span>
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-orange-500/15 text-xs font-bold text-orange-600">✓</span>
                   <span>Acessos para administradores e mecânicos</span>
                 </li>
               </ul>
 
               <Link
                 to={accessToken ? "/dashboard" : "/login"}
-                className="mt-8 block rounded-xl bg-orange-600 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-950/60 transition hover:bg-orange-500 active:scale-[0.98]"
+                className="mt-8 block rounded-xl bg-orange-600 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-500 active:scale-[0.98]"
               >
                 {accessToken ? "Ir para o Painel" : "Começar Meu Teste Grátis"}
               </Link>
@@ -615,8 +495,8 @@ export default function LandingPage() {
         {/* FAQ - DÚVIDAS FREQUENTES */}
         <section id="faq" className="mx-auto max-w-3xl px-4 sm:px-6 scroll-mt-24">
           <div className="text-center">
-            <span className="text-xs font-bold uppercase tracking-widest text-orange-400">Dúvidas Frequentes</span>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            <span className="text-sm font-bold uppercase tracking-widest text-orange-600">Dúvidas Frequentes</span>
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-zinc-900 sm:text-4xl lg:text-5xl">
               Perguntas e Respostas
             </h2>
           </div>
@@ -625,23 +505,23 @@ export default function LandingPage() {
             {FAQS.map((faq, index) => (
               <div
                 key={faq.question}
-                className="overflow-hidden rounded-2xl border border-zinc-800 bg-[#0d0f14] transition"
+                className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50/70 transition"
               >
                 <button
                   type="button"
                   onClick={() => toggleFaq(index)}
-                  className="flex w-full items-center justify-between p-4 sm:p-5 text-left text-sm font-bold text-white hover:text-orange-400 transition"
+                  className="flex w-full items-center justify-between p-4 sm:p-5 text-left text-sm font-bold text-zinc-900 hover:text-orange-600 transition"
                 >
                   <span>{faq.question}</span>
                   <IconChevronDown
                     size={18}
                     className={`shrink-0 text-zinc-400 transition-transform duration-200 ${
-                      openFaq === index ? "rotate-180 text-orange-400" : ""
+                      openFaq === index ? "rotate-180 text-orange-600" : ""
                     }`}
                   />
                 </button>
                 {openFaq === index && (
-                  <div className="border-t border-zinc-800/80 px-4 pb-5 pt-3 sm:px-5 text-xs leading-relaxed text-zinc-300">
+                  <div className="border-t border-zinc-200 bg-white px-4 pb-5 pt-3 sm:px-5 text-xs leading-relaxed text-zinc-600">
                     {faq.answer}
                   </div>
                 )}
@@ -652,22 +532,22 @@ export default function LandingPage() {
       </main>
 
       {/* FOOTER */}
-      <footer className="border-t border-zinc-800/80 bg-[#07080a]">
+      <footer className="border-t border-zinc-200 bg-zinc-50">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-10 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="flex items-center gap-2.5">
             <span className="flex size-6 items-center justify-center rounded-lg bg-orange-600 text-[11px] font-black text-white">
               A
             </span>
-            <span className="font-bold text-zinc-200">Autogestor</span>
+            <span className="font-bold text-zinc-900">Autogestor</span>
             <span>&middot;</span>
             <span>Sistema Integrado de Gestão para Oficinas Mecânicas</span>
           </div>
 
           <nav className="flex flex-wrap gap-5">
-            <a href="#pilares" className="hover:text-zinc-300 hover:underline">Pilares</a>
-            <a href="#funcionalidades" className="hover:text-zinc-300 hover:underline">Recursos</a>
-            <a href="#planos" className="hover:text-zinc-300 hover:underline">Planos</a>
-            <Link to="/login" className="text-orange-400 hover:underline font-semibold">Acessar Sistema</Link>
+            <a href="#pilares" className="hover:text-zinc-900 hover:underline">Pilares</a>
+            <a href="#funcionalidades" className="hover:text-zinc-900 hover:underline">Recursos</a>
+            <a href="#planos" className="hover:text-zinc-900 hover:underline">Planos</a>
+            <Link to="/login" className="text-orange-600 hover:underline font-semibold">Acessar Sistema</Link>
           </nav>
         </div>
       </footer>
