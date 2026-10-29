@@ -1212,3 +1212,91 @@ class ServiceOrderAttachmentAndWarrantyTests(ServiceOrderBaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         item = response.data["services"][0]
         self.assertEqual(item["service"]["warranty_days"], 180)
+
+class ServiceOrderFilterTests(ServiceOrderBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.other_mechanic = Employee.objects.create(
+            workshop=self.workshop,
+            name="Carlos Mecânico",
+        )
+        self.second_vehicle = Vehicle.objects.create(
+            workshop=self.workshop,
+            owner=self.client_obj,
+            brand="Fiat",
+            model="Argo",
+            license_plate=" Merc123".strip(),
+        )
+        # OS 1: Volkswagen Gol, mecânico Marcos Silva em 2 serviços diferentes
+        res1 = self.client.post(
+            OS_URL,
+            self.payload(
+                vehicle_id=str(self.vehicle.id),
+                services=[
+                    {
+                        "service_name": "Troca de óleo",
+                        "mechanic_id": str(self.mechanic.id),
+                        "price": "100.00",
+                    },
+                    {
+                        "service_name": "Alinhamento",
+                        "mechanic_id": str(self.mechanic.id),
+                        "price": "80.00",
+                    },
+                ],
+                products=[],
+            ),
+            format="json",
+        )
+        self.order_vw_id = res1.data["id"]
+
+        # OS 2: Fiat Argo, mecânico Carlos Mecânico
+        res2 = self.client.post(
+            OS_URL,
+            self.payload(
+                vehicle_id=str(self.second_vehicle.id),
+                services=[
+                    {
+                        "service_name": "Revisão de freios",
+                        "mechanic_id": str(self.other_mechanic.id),
+                        "price": "150.00",
+                    }
+                ],
+                products=[],
+            ),
+            format="json",
+        )
+        self.order_fiat_id = res2.data["id"]
+
+    def test_filter_by_vehicle_brand(self):
+        response = self.client.get(OS_URL, {"vehicle_brand": "volks"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.order_vw_id)
+
+    def test_filter_by_vehicle_model(self):
+        response = self.client.get(OS_URL, {"vehicle_model": "argo"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.order_fiat_id)
+
+    def test_filter_by_mechanic_without_duplicates(self):
+        response = self.client.get(OS_URL, {"mechanic": str(self.mechanic.id)})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Mesmo tendo 2 serviços com self.mechanic, a OS 1 deve aparecer apenas 1 vez
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.order_vw_id)
+
+    def test_combined_filters(self):
+        response = self.client.get(
+            OS_URL,
+            {
+                "status": "OPEN",
+                "vehicle_brand": "Fiat",
+                "vehicle_model": "Argo",
+                "mechanic": str(self.other_mechanic.id),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["results"][0]["id"], self.order_fiat_id)

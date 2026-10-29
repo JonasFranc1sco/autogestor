@@ -1,4 +1,5 @@
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
@@ -24,19 +25,25 @@ class RefreshView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        serializer = TokenRefreshSerializer(
-            data={"refresh": refresh}
-        )
+        try:
+            serializer = TokenRefreshSerializer(
+                data={"refresh": refresh}
+            )
 
-        serializer.is_valid(raise_exception=True)
+            serializer.is_valid(raise_exception=True)
 
-        response = Response(
-            {
-                "access": serializer.validated_data["access"], # type: ignore
-            },
-            status=status.HTTP_200_OK,
-        )
+            response = Response(
+                {
+                    "access": serializer.validated_data["access"], # type: ignore
+                },
+                status=status.HTTP_200_OK,
+            )
 
-        AuthService.set_refresh_cookie(response, serializer.validated_data["refresh"]) # type: ignore
+            AuthService.set_refresh_cookie(response, serializer.validated_data["refresh"]) # type: ignore
 
-        return response
+            return response
+        except TokenError:
+            return Response(
+                {"detail": "Token é inválido ou está na blacklist (Token is blacklisted)."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )

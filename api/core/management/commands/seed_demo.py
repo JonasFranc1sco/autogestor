@@ -140,17 +140,33 @@ class Command(BaseCommand):
             defaults={"cnpj": "00.000.000/0001-91", "email": "contato@demo.com"},
         )
 
-        user, user_created = User.objects.get_or_create(
-            email=options["email"],
-            defaults={
-                "full_name": "Admin Demonstração",
-                "role": Role.ADMIN,
-                "workshop": workshop,
-            },
-        )
-        if user_created:
-            user.set_password(options["password"])
-            user.save(update_fields=["password"])
+        demo_users_spec = [
+            (options["email"], "Admin Demonstração", Role.ADMIN),
+            ("gerente@demo.com", "Gerente Demonstração", Role.MANAGER),
+            ("mecanico@demo.com", "Mecânico Demonstração", Role.MECHANIC),
+            ("atendente@demo.com", "Atendente Demonstração", Role.ATTENDANT),
+        ]
+
+        demo_users = {}
+        for email, full_name, role in demo_users_spec:
+            u, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    "full_name": full_name,
+                    "role": role,
+                    "workshop": workshop,
+                },
+            )
+            if created:
+                u.set_password(options["password"])
+                u.save(update_fields=["password"])
+            elif u.role != role or u.workshop_id != workshop.id:
+                u.role = role
+                u.workshop = workshop
+                u.save(update_fields=["role", "workshop"])
+            demo_users[role] = u
+
+        user = demo_users[Role.ADMIN]
 
         # 1. Funcionários (300)
         employees = []
@@ -269,9 +285,12 @@ class Command(BaseCommand):
                 odometer=15000 + (i * 1250),
             )
 
+        credentials_summary = ", ".join(
+            f"{role.label}: {email}" for email, _, role in demo_users_spec
+        )
         self.stdout.write(
             self.style.SUCCESS(
                 f"Oficina de demonstração populada com {total} itens por modelo. "
-                f"Login: {options['email']} / {options['password']}"
+                f"Usuários ({credentials_summary}) | Senha: {options['password']}"
             )
         )

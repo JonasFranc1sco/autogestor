@@ -21,8 +21,14 @@ nano .env
 # Subir tudo
 docker compose up --build
 
+# Rodar as migrations no banco de dados
+docker compose exec api python manage.py migrate
+
 # Criar superusuário (em outra aba)
 docker compose exec api python manage.py createsuperuser
+
+# Inserir dados no banco para verificar a demo do site com ambiente populado (opcional para testes)
+docker compose exec api python manage.py seed_demo
 ```
 
 | Serviço | URL |

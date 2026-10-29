@@ -34,7 +34,7 @@ export function Sidebar({ onNavigate, onCloseMobile, mobileOpen = false }: Sideb
   const isAdminOrManager = user?.role === "ADMIN" || user?.role === "MANAGER";
 
   const navItems: { icon: typeof IconHome; label: string; to: string; adminOnly?: boolean }[] = [
-    { icon: IconHome, label: "Dashboard", to: "/" },
+    { icon: IconHome, label: "Dashboard", to: "/dashboard" },
     { icon: IconUsers, label: "Clientes", to: "/clientes" },
     { icon: IconClipboardList, label: "Ordens de Serviço", to: "/os" },
     { icon: IconFileDollar, label: "Orçamento", to: "/orcamento" },

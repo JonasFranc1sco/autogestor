@@ -1,7 +1,12 @@
 from django.shortcuts import render
+from django.db import transaction
 from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 from users.models import User, Role
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
 from users.permissions import IsAdmin, IsManagerOrAdmin, IsOwnerOrAdmin
 from users.serializers.user import UserUpdateSerializer, UserCreateSerializer, UserListSerializer, UserDetailSerializer
 from core.tenancy import scope_queryset
@@ -52,9 +57,12 @@ class UserViewSet(viewsets.ModelViewSet):
             if not other_admins.exists():
                 raise ValidationError("Não é possível desativar o último administrador da oficina.")
 
-        instance.is_active = False
+        with transaction.atomic():
+            instance.is_active = False
+            instance.save(update_fields=["is_active", "updated_at"])
 
-        instance.save(update_fields=["is_active", "updated_at"])
+            for token in OutstandingToken.objects.filter(user=instance):
+                BlacklistedToken.objects.get_or_create(token=token)
         
     def get_permissions(self):
         

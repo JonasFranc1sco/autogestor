@@ -15,7 +15,7 @@ export default function Login() {
 
   useEffect(() => {
     if (accessToken) {
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     }
   }, [accessToken, navigate]);
 
@@ -26,7 +26,7 @@ export default function Login() {
 
     try {
       await login(email, password);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       const status = err && typeof err === "object" && "response" in err
         ? (err as { response?: { status?: number } }).response?.status
@@ -136,8 +136,11 @@ export default function Login() {
           </Link>
         </p>
 
-        <p className="text-center text-xs text-muted-foreground">
-          Sistema de gestão para oficinas mecânicas
+        <p className="text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+          <span>Sistema de gestão para oficinas mecânicas</span>
+          <Link to="/" className="text-zinc-500 hover:text-primary transition-colors">
+            ← Voltar para a página inicial
+          </Link>
         </p>
       </div>
     </main>
