@@ -332,6 +332,44 @@ class UserManagementTests(BaseAuthTestCase):
         target.refresh_from_db()
         self.assertFalse(target.is_active)
 
+    def test_deactivating_user_blacklists_outstanding_refresh_tokens(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.token_blacklist.models import (
+            BlacklistedToken,
+            OutstandingToken,
+        )
+
+        target = User.objects.create_user(
+            email="mecanico.sessao@oficina.com",
+            password="senhaForte123",
+            full_name="Mecânico Com Sessão",
+            role=Role.MECHANIC,
+            workshop=self.workshop,
+        )
+
+        target_client = APIClient()
+        login_res = target_client.post(
+            "/api/auth/login/",
+            {"email": "mecanico.sessao@oficina.com", "password": "senhaForte123"},
+            format="json",
+        )
+        self.assertEqual(login_res.status_code, status.HTTP_200_OK)
+        target_client.cookies = login_res.cookies
+
+        outstanding_tokens = OutstandingToken.objects.filter(user=target)
+        self.assertEqual(outstanding_tokens.count(), 1)
+        self.assertFalse(BlacklistedToken.objects.filter(token__user=target).exists())
+
+        self.client.force_authenticate(self.admin)
+        delete_res = self.client.delete(f"/api/users/{target.id}/")
+        self.assertEqual(delete_res.status_code, status.HTTP_204_NO_CONTENT)
+
+        for token in outstanding_tokens:
+            self.assertTrue(BlacklistedToken.objects.filter(token=token).exists())
+
+        refresh_res = target_client.post("/api/auth/refresh/")
+        self.assertEqual(refresh_res.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_admin_can_deactivate_second_admin(self):
         second_admin = User.objects.create_user(
             email="admin2@oficina.com",
