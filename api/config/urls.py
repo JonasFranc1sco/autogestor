@@ -31,11 +31,17 @@ urlpatterns = [
     path("api/", include("service_order.urls")),
     path("api/", include("services.urls")),
     path("api/", include("scheduling.urls")),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
     re_path(
         r"^media/workshops/logos/(?P<path>.*)$",
         serve,
         {"document_root": settings.MEDIA_ROOT / "workshops" / "logos"},
     ),
 ]
+
+if settings.DEBUG:
+    from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+
+    urlpatterns += [
+        path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+        path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    ]
